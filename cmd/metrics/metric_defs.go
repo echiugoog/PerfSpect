@@ -20,10 +20,22 @@ type Variable struct {
 }
 
 type MetricDefinition struct {
-	Name       string                         `json:"name"`
-	Expression string                         `json:"expression"`
-	Variables  map[string]int                 // parsed from Expression for efficiency, int represents group index
-	Evaluable  *govaluate.EvaluableExpression // parse expression once, store here for use in metric evaluation
+	Name        string `json:"name"`
+	Expression  string `json:"expression"`
+	Description string
+	Variables   map[string]int                 // parsed from Expression for efficiency, int represents group index
+	Evaluable   *govaluate.EvaluableExpression // parse expression once, store here for use in metric evaluation
+}
+
+type ArmMetricDefinition struct {
+	Name         string                         `json:"MetricName"`
+	ArchStdEvent string                         `json:"ArchStdEvent"`
+	Expression   string                         `json:"MetricExpr"`
+	Description  string                         `json:"BriefDescription"`
+	MetricGroup  string                         `json:"MetricGroup"`
+	ScaleUnit    string                         `json:"ScaleUnit"`
+	Variables    map[string]int                 // parsed from Expression for efficiency, int represents group index
+	Evaluable    *govaluate.EvaluableExpression // parse expression once, store here for use in metric evaluation
 }
 
 // LoadMetricDefinitions reads and parses metric definitions from an architecture-specific metric
@@ -31,6 +43,10 @@ type MetricDefinition struct {
 // the file associated with the platform's architecture found in the provided metadata. When
 // a list of metric names is provided, only those metric definitions will be loaded.
 func LoadMetricDefinitions(metricDefinitionOverridePath string, selectedMetrics []string, metadata Metadata) (metrics []MetricDefinition, err error) {
+	slog.Debug("loading metric definitions", slog.Any("metadata", metadata))
+	if metadata.Architecture == "aarch64" || metadata.Architecture == "arm" {
+		return LoadMetricDefinitionsArm(metricDefinitionOverridePath, selectedMetrics, metadata)
+	}
 	var bytes []byte
 	if metricDefinitionOverridePath != "" {
 		if bytes, err = os.ReadFile(metricDefinitionOverridePath); err != nil {
@@ -70,6 +86,56 @@ func LoadMetricDefinitions(metricDefinitionOverridePath string, selectedMetrics 
 		}
 	} else {
 		metrics = metricsInFile
+	}
+	return
+}
+
+func LoadMetricDefinitionsArm(metricDefinitionOverridePath string, selectedMetrics []string, metadata Metadata) (metrics []MetricDefinition, err error) {
+	var bytes []byte
+	var uarch string
+	if uarch, err = lookupArmVariant(metadata); err != nil {
+		return
+	}
+	if bytes, err = resources.ReadFile(filepath.Join("resources", "metrics", metadata.Architecture, uarch, "metrics.json")); err != nil {
+		return
+	}
+	var metricsInFile []ArmMetricDefinition
+	if err = json.Unmarshal(bytes, &metricsInFile); err != nil {
+		return
+	}
+
+	// Populate a temporary map of all available metrics from the file
+	// for easy lookup if specific metrics are selected.
+	allMetricsFromFile := make(map[string]MetricDefinition)
+	for _, armMetric := range metricsInFile {
+		slog.Debug("all metrics", slog.String("name", armMetric.Name), slog.String("expression", armMetric.Expression))
+		metricName := armMetric.Name
+		if metricName == "" {
+			metricName = armMetric.ArchStdEvent
+		}
+		allMetricsFromFile[armMetric.Name] = MetricDefinition{
+			Name:        metricName,
+			Expression:  armMetric.Expression,
+			Description: armMetric.Description,
+			// Variables and Evaluable are populated by ConfigureMetrics
+		}
+	}
+
+	// if a list of metric names provided, reduce list to match
+	if len(selectedMetrics) > 0 {
+		for _, selectedMetricName := range selectedMetrics {
+			metric, ok := allMetricsFromFile[selectedMetricName]
+			if !ok {
+				err = fmt.Errorf("provided metric name not found: %s", selectedMetricName)
+				return
+			}
+			metrics = append(metrics, metric)
+		}
+	} else { // No specific metrics selected, load all
+		for _, metric := range allMetricsFromFile {
+			slog.Debug("metric def append", slog.String("name", metric.Name))
+			metrics = append(metrics, metric)
+		}
 	}
 	return
 }

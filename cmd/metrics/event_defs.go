@@ -7,6 +7,7 @@ package metrics
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -21,9 +22,17 @@ import (
 
 // EventDefinition represents a single perf event
 type EventDefinition struct {
-	Raw    string
-	Name   string
-	Device string
+	Raw         string
+	Name        string
+	Device      string
+	Description string
+}
+
+// ARM64Event represents the structure of an event in the ARM PMU event JSON files (e.g. https://github.com/torvalds/linux/tree/master/tools/perf/pmu-events/arch/arm64/arm).
+type ARM64Event struct {
+	ArchStdEvent      string `json:"ArchStdEvent"`
+	PublicDescription string `json:"PublicDescription"`
+	// Add other fields if present in JSON and needed
 }
 
 // GroupDefinition represents a group of perf events
@@ -32,9 +41,13 @@ type GroupDefinition []EventDefinition
 // LoadEventGroups reads the events defined in the architecture specific event definition file, then
 // expands them to include the per-device uncore events
 func LoadEventGroups(eventDefinitionOverridePath string, metadata Metadata) (groups []GroupDefinition, uncollectableEvents []string, err error) {
+	if metadata.Architecture == "arm64" || metadata.Architecture == "aarch64" {
+		return LoadArmEventGroups(eventDefinitionOverridePath, metadata)
+	}
 	var file fs.File
 	if eventDefinitionOverridePath != "" {
 		if file, err = os.Open(eventDefinitionOverridePath); err != nil {
+			slog.Error("Failed to open event definition override file", slog.String("path", eventDefinitionOverridePath), slog.Any("error", err))
 			return
 		}
 	} else {
@@ -47,6 +60,7 @@ func LoadEventGroups(eventDefinitionOverridePath string, metadata Metadata) (gro
 		}
 		eventFileName := fmt.Sprintf("%s%s.txt", uarch, alternate)
 		if file, err = resources.Open(filepath.Join("resources", "events", metadata.Architecture, metadata.Vendor, eventFileName)); err != nil {
+			slog.Error("Failed to open event definition file", slog.String("path", eventFileName), slog.Any("error", err))
 			return
 		}
 	}
@@ -61,6 +75,7 @@ func LoadEventGroups(eventDefinitionOverridePath string, metadata Metadata) (gro
 		}
 		var event EventDefinition
 		if event, err = parseEventDefinition(line[:len(line)-1]); err != nil {
+			slog.Error("Failed to parse event definition", slog.String("line", line), slog.Any("error", err))
 			return
 		}
 		// abbreviate the event name to shorten the eventual perf stat command line
@@ -82,6 +97,7 @@ func LoadEventGroups(eventDefinitionOverridePath string, metadata Metadata) (gro
 		}
 	}
 	if err = scanner.Err(); err != nil {
+		slog.Error("Error reading event definition file", slog.Any("error", err))
 		return
 	}
 	uncollectableEvents = uncollectable.ToSlice()
@@ -92,6 +108,110 @@ func LoadEventGroups(eventDefinitionOverridePath string, metadata Metadata) (gro
 		slog.Warn("Events not collectable on target", slog.String("events", uncollectable.String()))
 	}
 	return
+}
+
+func LoadArmEventGroups(eventDefinitionOverridePath string, metadata Metadata) (groups []GroupDefinition, uncollectableEvents []string, err error) {
+	var eventFiles []fs.DirEntry
+	var eventDirPath string
+
+	if eventDefinitionOverridePath != "" {
+		// If override path is a directory, use it; otherwise, it's an unsupported override for ARM.
+		// For simplicity, let's assume override path can be a directory of JSONs.
+		// A more robust solution would check if it's a file or dir.
+		fi, statErr := os.Stat(eventDefinitionOverridePath)
+		if statErr != nil {
+			err = fmt.Errorf("failed to stat eventDefinitionOverridePath '%s': %w", eventDefinitionOverridePath, statErr)
+			return
+		}
+		if !fi.IsDir() {
+			// If it's a single file, this logic path is not designed for it with ARM.
+			// For now, we can fall back to trying to parse it as a legacy file, or error out.
+			// Let's error, as ARM expects a directory of JSONs.
+			err = fmt.Errorf("ARM64 eventDefinitionOverridePath '%s' is not a directory", eventDefinitionOverridePath)
+			return
+
+		}
+		eventDirPath = eventDefinitionOverridePath
+		eventFiles, err = os.ReadDir(eventDirPath)
+		if err != nil {
+			err = fmt.Errorf("failed to read override event directory '%s': %w", eventDirPath, err)
+			return
+		}
+	} else {
+		var microarchitectureVariant string
+		if microarchitectureVariant, err = lookupArmVariant(metadata); err != nil {
+			err = fmt.Errorf("failed to lookup ARM variant: %w", err)
+			slog.Error("Failed to lookup ARM variant", slog.Any("error", err))
+			return
+		}
+
+		eventDirPath = filepath.Join("resources", "events", metadata.Architecture, microarchitectureVariant)
+		eventFiles, err = resources.ReadDir(eventDirPath)
+		if err != nil {
+			err = fmt.Errorf("failed to read ARM event directory '%s': %w", eventDirPath, err)
+			// Fallback or specific error handling if directory doesn't exist
+			// For now, if the directory specific to microarchitecture doesn't exist, return error.
+			slog.Error("ARM event directory not found", slog.String("path", eventDirPath), slog.Any("error", err))
+			return
+		}
+	}
+
+	uncollectable := mapset.NewSet[string]()
+	for _, fileEntry := range eventFiles {
+		slog.Debug("fileEntry", slog.String("name", fileEntry.Name()))
+		if !fileEntry.IsDir() && strings.HasSuffix(strings.ToLower(fileEntry.Name()), ".json") {
+			var filePath string
+			var fileData []byte
+			if eventDefinitionOverridePath != "" { // Reading from an override directory
+				filePath = filepath.Join(eventDirPath, fileEntry.Name())
+				fileData, err = os.ReadFile(filePath)
+			} else { // Reading from embedded resources
+				filePath = filepath.Join(eventDirPath, fileEntry.Name())
+				fileData, err = resources.ReadFile(filePath)
+			}
+
+			if err != nil {
+				slog.Warn("Failed to read ARM event file", slog.String("file", filePath), slog.Any("error", err))
+				continue
+			}
+
+			var armEvents []ARM64Event
+			if err = json.Unmarshal(fileData, &armEvents); err != nil {
+				slog.Warn("Failed to parse ARM event file", slog.String("file", filePath), slog.Any("error", err))
+				continue
+			}
+
+			var currentGroup GroupDefinition
+			for _, armEvent := range armEvents {
+				slog.Debug("ARM event definition", slog.Any("event", armEvent))
+				event := EventDefinition{
+					Name:        armEvent.ArchStdEvent,
+					Raw:         armEvent.ArchStdEvent, // Or synthesize e.g., "arm64/" + armEvent.ArchStdEvent
+					Device:      "cpu",                 // assume all CPU events for now
+					Description: armEvent.PublicDescription,
+				}
+				if isCollectableEvent(event, metadata) {
+					currentGroup = append(currentGroup, event)
+				} else {
+					slog.Debug("Event not collectable on target", slog.String("name", event.Name))
+					uncollectable.Add(event.Name)
+				}
+			}
+			if len(currentGroup) > 0 {
+				groups = append(groups, currentGroup)
+			} else {
+				slog.Warn("No collectable ARM events in file", slog.String("file", filePath))
+			}
+		}
+	}
+	return
+}
+
+func lookupArmVariant(metadata Metadata) (string, error) {
+	if metadata.Microarchitecture == "Neoverse V2" {
+		return "neoverse-n2-v2", nil
+	}
+	return "", fmt.Errorf("unknown ARM variant: %s", metadata.Microarchitecture)
 }
 
 // abbreviateEventName replaces long event names with abbreviations to reduce the length of the perf command.
