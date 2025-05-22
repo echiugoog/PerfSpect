@@ -116,8 +116,19 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 		return
 	}
 	metadata.Microarchitecture = cpu.MicroArchitecture
+	var numGPCounters int
+	if metadata.Architecture == "aarch64" {
+		numGPCounters, err = getNumGPCountersArm(myTarget)
+	} else {
+		numGPCounters, err = getNumGPCounters(metadata.Microarchitecture)
+	}
+	if err != nil {
+		err = fmt.Errorf("failed to get number of GP counters: %v", err)
+		return
+	}
+
 	// the rest of the metadata is retrieved by running scripts in parallel
-	metadataScripts, err := getMetadataScripts(noRoot, perfPath, metadata.Microarchitecture, noSystemSummary)
+	metadataScripts, err := getMetadataScripts(noRoot, perfPath, metadata.Microarchitecture, numGPCounters, noSystemSummary)
 	if err != nil {
 		err = fmt.Errorf("failed to get metadata scripts: %v", err)
 		return
@@ -251,7 +262,7 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 	return
 }
 
-func getMetadataScripts(noRoot bool, perfPath string, uarch string, noSystemSummary bool) (metadataScripts []script.ScriptDefinition, err error) {
+func getMetadataScripts(noRoot bool, perfPath string, uarch string, numGPCounters int, noSystemSummary bool) (metadataScripts []script.ScriptDefinition, err error) {
 	// reduce startup time by running the metadata scripts in parallel
 	metadataScriptDefs := []script.ScriptDefinition{
 		{
@@ -322,11 +333,6 @@ func getMetadataScripts(noRoot bool, perfPath string, uarch string, noSystemSumm
 		},
 	}
 	// replace script template vars
-	numGPCounters, err := getNumGPCounters(uarch)
-	if err != nil {
-		err = fmt.Errorf("failed to get number of GP counters: %v", err)
-		return
-	}
 	for _, scriptDef := range metadataScriptDefs {
 		if scriptDef.Name == "perf stat fixed instructions" {
 			var eventList []string
@@ -511,6 +517,36 @@ func getUncoreDeviceIDs(isAMDArchitecture bool, scriptOutputs map[string]script.
 			}
 		}
 		IDs[match[1]] = append(IDs[match[1]], id)
+	}
+	return
+}
+
+func getNumGPCountersArm(target target.Target) (numGPCounters int, err error) {
+	numGPCounters = 0
+	var cmd *exec.Cmd
+	if target.CanElevatePrivileges() {
+		cmd = exec.Command("sudo", "sh", "-c", "dmesg | grep 'PMU Driver'")
+	} else {
+		cmd = exec.Command("sh", "-c", "dmesg | grep 'PMU Driver'")
+	}
+	stdout, stderr, exitcode, err := target.RunCommand(cmd, 0, true)
+	if err != nil {
+		err = fmt.Errorf("failed to get PMU Driver line: %s, %d, %v", stderr, exitcode, err)
+		return
+	}
+	// example [    1.339550] hw perfevents: enabled with armv8_pmuv3_0 PMU driver, 5 counters available
+	counterRegex := regexp.MustCompile(`(\d+) counters available`)
+	matches := counterRegex.FindStringSubmatch(stdout)
+	if len(matches) > 1 {
+		numberStr := matches[1]
+		numGPCounters, err = strconv.Atoi(numberStr)
+		if err != nil {
+			err = fmt.Errorf("error converting string to int: %v", err)
+			return
+		}
+	} else {
+		err = fmt.Errorf("no match for number of counters on line: %s", stdout)
+		return
 	}
 	return
 }
