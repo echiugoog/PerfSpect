@@ -7,6 +7,7 @@ package metrics
 // used during data collection and metric production
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -56,6 +57,11 @@ type Metadata struct {
 func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, perfPath string, localTempDir string) (metadata Metadata, err error) {
 	// Hostname
 	metadata.Hostname = myTarget.GetName()
+	metadata.Architecture, err = myTarget.GetArchitecture()
+	if err != nil {
+		slog.Error("failed to retrieve architecture", slog.String("error", err.Error()))
+		return
+	}
 	// CPU Info (from /proc/cpuinfo)
 	var cpuInfo []map[string]string
 	cpuInfo, err = getCPUInfo(myTarget)
@@ -63,24 +69,34 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 		err = fmt.Errorf("failed to read cpu info: %v", err)
 		return
 	}
-	// Core Count (per socket) (from cpuInfo)
-	metadata.CoresPerSocket, err = strconv.Atoi(cpuInfo[0]["cpu cores"])
-	if err != nil || metadata.CoresPerSocket == 0 {
-		err = fmt.Errorf("failed to retrieve cores per socket: %v", err)
-		return
-	}
-	// Socket Count (from cpuInfo)
-	var maxPhysicalID int
-	if maxPhysicalID, err = strconv.Atoi(cpuInfo[len(cpuInfo)-1]["physical id"]); err != nil {
-		err = fmt.Errorf("failed to retrieve max physical id: %v", err)
-		return
-	}
-	metadata.SocketCount = maxPhysicalID + 1
-	// Hyperthreading - threads per core (from cpuInfo)
-	if cpuInfo[0]["siblings"] != cpuInfo[0]["cpu cores"] {
-		metadata.ThreadsPerCore = 2
+	// Core Count (per socket) (from cpuInfo or lscpu for ARM)
+	var cpuFamily, cpuModel, cpuStepping string
+	if metadata.Architecture == "aarch64" {
+		// family string, model string, stepping string, sockets int, cores int, threads int
+		cpuFamily, _, cpuStepping, metadata.SocketCount, metadata.CoresPerSocket, metadata.ThreadsPerCore, err = getCPUInfoViaLsCPU(myTarget)
+		if err != nil || metadata.CoresPerSocket == 0 || metadata.ThreadsPerCore == 0 {
+			return
+		}
+		cpuModel = cpuInfo[0]["cpu part"]
 	} else {
-		metadata.ThreadsPerCore = 1
+		metadata.CoresPerSocket, err = strconv.Atoi(cpuInfo[0]["cpu cores"])
+		if err != nil || metadata.CoresPerSocket == 0 {
+			err = fmt.Errorf("failed to retrieve cores per socket: %v", err)
+			return
+		}
+		// Socket Count (from cpuInfo)
+		var maxPhysicalID int
+		if maxPhysicalID, err = strconv.Atoi(cpuInfo[len(cpuInfo)-1]["physical id"]); err != nil {
+			err = fmt.Errorf("failed to retrieve max physical id: %v", err)
+			return
+		}
+		metadata.SocketCount = maxPhysicalID + 1
+		// Hyperthreading - threads per core (from cpuInfo)
+		if cpuInfo[0]["siblings"] != cpuInfo[0]["cpu cores"] {
+			metadata.ThreadsPerCore = 2
+		} else {
+			metadata.ThreadsPerCore = 1
+		}
 	}
 	// CPUSocketMap (from cpuInfo)
 	metadata.CPUSocketMap = createCPUSocketMap(metadata.CoresPerSocket, metadata.SocketCount, metadata.ThreadsPerCore == 2)
@@ -89,7 +105,13 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 	// Vendor (from cpuInfo)
 	metadata.Vendor = cpuInfo[0]["vendor_id"]
 	// CPU microarchitecture (from cpuInfo)
-	cpu, err := report.GetCPU(cpuInfo[0]["cpu family"], cpuInfo[0]["model"], cpuInfo[0]["stepping"])
+	var cpu report.CPUDefinition
+	if cpuFamily == "" && cpuModel == "" && cpuStepping == "" {
+		cpuFamily = cpuInfo[0]["cpu family"]
+		cpuModel = cpuInfo[0]["model"]
+		cpuStepping = cpuInfo[0]["stepping"]
+	}
+	cpu, err = report.GetCPU(cpuFamily, cpuModel, cpuStepping)
 	if err != nil {
 		return
 	}
@@ -515,6 +537,86 @@ func getCPUInfo(myTarget target.Target) (cpuInfo []map[string]string, err error)
 		}
 		oneCPUInfo[strings.TrimSpace(fields[0])] = strings.TrimSpace(fields[1])
 	}
+	return
+}
+
+// parseLsCPUOutput parses the stdout from the lscpu command.
+func parseLsCPUOutput(stdout string) (family string, model string, stepping string, sockets int, coresPerSocket int, threadsPerCore int, err error) {
+	familyRegex := regexp.MustCompile(`(?i)^\s*CPU family:\s*(.+)`)
+	modelRegex := regexp.MustCompile(`(?i)^\s*Model:\s*(.+)`)
+	steppingRegex := regexp.MustCompile(`(?i)^\s*Stepping:\s*(.+)`)
+	socketsRegex := regexp.MustCompile(`(?i)^\s*Socket\(s\):\s*(\d+)`)
+	coresPerSocketRegex := regexp.MustCompile(`(?i)^\s*Core\(s\) per socket:\s*(\d+)`)
+	threadsPerCoreRegex := regexp.MustCompile(`(?i)^\s*Thread\(s\)\ per core:\s*(\d+)`)
+
+	scanner := bufio.NewScanner(strings.NewReader(stdout))
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if matches := familyRegex.FindStringSubmatch(line); len(matches) > 1 {
+			family = strings.TrimSpace(matches[1])
+			continue
+		}
+
+		if matches := modelRegex.FindStringSubmatch(line); len(matches) > 1 {
+			model = strings.TrimSpace(matches[1])
+			continue
+		}
+
+		if matches := steppingRegex.FindStringSubmatch(line); len(matches) > 1 {
+			stepping = strings.TrimSpace(matches[1])
+			continue
+		}
+
+		if matches := socketsRegex.FindStringSubmatch(line); len(matches) > 1 {
+			socketsStr := strings.TrimSpace(matches[1])
+			parsedSockets, convErr := strconv.Atoi(socketsStr)
+			if convErr != nil {
+				slog.Error("Error parsing sockets", slog.String("sockets", socketsStr), slog.String("error", convErr.Error()))
+			} else {
+				sockets = parsedSockets
+			}
+			continue
+		}
+
+		if matches := coresPerSocketRegex.FindStringSubmatch(line); len(matches) > 1 {
+			coresStr := strings.TrimSpace(matches[1])
+			parsedCores, convErr := strconv.Atoi(coresStr)
+			if convErr != nil {
+				slog.Error("Error parsing coresPerSocket", slog.String("coresPerSocket", coresStr), slog.String("error", convErr.Error()))
+			} else {
+				coresPerSocket = parsedCores
+			}
+			continue
+		}
+
+		if matches := threadsPerCoreRegex.FindStringSubmatch(line); len(matches) > 1 {
+			threadsStr := strings.TrimSpace(matches[1])
+			parsedThreads, convErr := strconv.Atoi(threadsStr)
+			if convErr != nil {
+				slog.Error("Error parsing threads", slog.String("threads", threadsStr), slog.String("error", convErr.Error()))
+			} else {
+				threadsPerCore = parsedThreads
+			}
+			continue
+		}
+
+	}
+	if err = scanner.Err(); err != nil {
+		slog.Error("Error scanning lscpu output", slog.String("error", err.Error()))
+	}
+	return
+}
+
+// getCPUInfoViaLsCPU runs lscpu and parses its output. Used to lookup ARM processor information.
+func getCPUInfoViaLsCPU(myTarget target.Target) (family string, model string, stepping string, sockets int, cores int, threads int, err error) {
+	cmd := exec.Command("lscpu")
+	stdout, stderr, exitcode, runErr := myTarget.RunCommand(cmd, 60, true)
+	if runErr != nil {
+		err = fmt.Errorf("failed to get lscpu output: %s, %d, %w", stderr, exitcode, runErr)
+		return
+	}
+	family, model, stepping, sockets, cores, threads, err = parseLsCPUOutput(stdout)
 	return
 }
 
