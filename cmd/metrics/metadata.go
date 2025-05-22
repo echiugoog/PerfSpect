@@ -63,11 +63,26 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 		err = fmt.Errorf("failed to read cpu info: %v", err)
 		return
 	}
-	// Core Count (per socket) (from cpuInfo)
-	metadata.CoresPerSocket, err = strconv.Atoi(cpuInfo[0]["cpu cores"])
-	if err != nil || metadata.CoresPerSocket == 0 {
-		err = fmt.Errorf("failed to retrieve cores per socket: %v", err)
+	// Model Name (from cpuInfo)
+	metadata.ModelName = cpuInfo[0]["model name"]
+	// Vendor (from cpuInfo)
+	metadata.Vendor = cpuInfo[0]["vendor_id"]
+	// CPU microarchitecture (from cpuInfo)
+	cpu, err := report.GetCPU(cpuInfo[0]["cpu family"], cpuInfo[0]["model"], cpuInfo[0]["stepping"])
+	if err != nil {
+		slog.Error("failed to get CPU info", slog.String("error", err.Error()))
 		return
+	}
+	metadata.Microarchitecture = cpu.MicroArchitecture
+	// Core Count (per socket) (from cpuInfo)
+	if metadata.Architecture == "aarch64" {
+		metadata.CoresPerSocket = countArmCPUCores(cpuInfo)
+	} else {
+		metadata.CoresPerSocket, err = strconv.Atoi(cpuInfo[0]["cpu cores"])
+		if err != nil || metadata.CoresPerSocket == 0 {
+			err = fmt.Errorf("failed to retrieve cores per socket: %v", err)
+			return
+		}
 	}
 	// Socket Count (from cpuInfo)
 	var maxPhysicalID int
@@ -84,16 +99,6 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 	}
 	// CPUSocketMap (from cpuInfo)
 	metadata.CPUSocketMap = createCPUSocketMap(metadata.CoresPerSocket, metadata.SocketCount, metadata.ThreadsPerCore == 2)
-	// Model Name (from cpuInfo)
-	metadata.ModelName = cpuInfo[0]["model name"]
-	// Vendor (from cpuInfo)
-	metadata.Vendor = cpuInfo[0]["vendor_id"]
-	// CPU microarchitecture (from cpuInfo)
-	cpu, err := report.GetCPU(cpuInfo[0]["cpu family"], cpuInfo[0]["model"], cpuInfo[0]["stepping"])
-	if err != nil {
-		return
-	}
-	metadata.Microarchitecture = cpu.MicroArchitecture
 	// the rest of the metadata is retrieved by running scripts in parallel
 	metadataScripts, err := getMetadataScripts(noRoot, perfPath, metadata.Microarchitecture, noSystemSummary)
 	if err != nil {
@@ -227,6 +232,17 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 	}
 	err = nil
 	return
+}
+
+func countArmCPUCores(cpuinfo []map[string]string) int {
+	slog.Debug("cpuinfo", slog.Any("cpuinfo", cpuinfo))
+	coreCount := 0
+	for _, cpu := range cpuinfo {
+		if cpu["processor"] != "" {
+			coreCount++
+		}
+	}
+	return coreCount
 }
 
 func getMetadataScripts(noRoot bool, perfPath string, uarch string, noSystemSummary bool) (metadataScripts []script.ScriptDefinition, err error) {
@@ -501,6 +517,12 @@ func getCPUInfo(myTarget target.Target) (cpuInfo []map[string]string, err error)
 		err = fmt.Errorf("failed to get cpuinfo: %s, %d, %v", stderr, exitcode, err)
 		return
 	}
+	cpuInfo = parseCPUInfo(stdout)
+	return
+}
+
+func parseCPUInfo(stdout string) []map[string]string {
+	var cpuInfo []map[string]string
 	oneCPUInfo := make(map[string]string)
 	for line := range strings.SplitSeq(stdout, "\n") {
 		fields := strings.Split(line, ":")
@@ -515,7 +537,7 @@ func getCPUInfo(myTarget target.Target) (cpuInfo []map[string]string, err error)
 		}
 		oneCPUInfo[strings.TrimSpace(fields[0])] = strings.TrimSpace(fields[1])
 	}
-	return
+	return cpuInfo
 }
 
 // getPerfSupportedEvents - returns a string containing the output from
