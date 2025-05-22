@@ -233,11 +233,13 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 		return
 	}
 	// System TSC Frequency
-	if metadata.TSCFrequencyHz, err = getTSCFreqHz(scriptOutputs); err != nil {
-		err = fmt.Errorf("failed to retrieve TSC frequency: %v", err)
-		return
-	} else {
-		metadata.TSC = metadata.SocketCount * metadata.CoresPerSocket * metadata.ThreadsPerCore * metadata.TSCFrequencyHz
+	if metadata.Architecture == "x86_64" {
+		if metadata.TSCFrequencyHz, err = getTSCFreqHz(scriptOutputs); err != nil {
+			err = fmt.Errorf("failed to retrieve TSC frequency: %v", err)
+			return
+		} else {
+			metadata.TSC = metadata.SocketCount * metadata.CoresPerSocket * metadata.ThreadsPerCore * metadata.TSCFrequencyHz
+		}
 	}
 	// uncore device IDs and uncore support
 	isAMDArchitecture := metadata.Vendor == "AuthenticAMD"
@@ -525,9 +527,9 @@ func getNumGPCountersArm(target target.Target) (numGPCounters int, err error) {
 	numGPCounters = 0
 	var cmd *exec.Cmd
 	if target.CanElevatePrivileges() {
-		cmd = exec.Command("sudo", "sh", "-c", "dmesg | grep 'PMU Driver'")
+		cmd = exec.Command("sudo", "bash", "-c", "dmesg | grep -i \"PMU Driver\"")
 	} else {
-		cmd = exec.Command("sh", "-c", "dmesg | grep 'PMU Driver'")
+		cmd = exec.Command("bash", "-c", "dmesg | grep -i \"PMU Driver\"")
 	}
 	stdout, stderr, exitcode, err := target.RunCommand(cmd, 0, true)
 	if err != nil {
