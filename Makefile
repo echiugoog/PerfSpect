@@ -12,8 +12,33 @@ VERSION := $(VERSION_NUMBER)_$(COMMIT_DATE)_$(COMMIT_ID)
 
 default: perfspect
 
-GO=CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go
-GOFLAGS=-trimpath -mod=readonly -gcflags="all=-spectre=all -N -l" -asmflags="all=-spectre=all" -ldflags="-X perfspect/cmd.gVersion=$(VERSION) -s -w"
+# identify arch
+UNAME_M := $(shell uname -m)
+
+# Default ARCH to amd64
+ARCH := amd64
+
+# Check for x86_64 (common for amd64)
+ifeq ($(UNAME_M), x86_64)
+  ARCH := amd64
+endif
+
+# Check for aarch64
+ifeq ($(UNAME_M), aarch64)
+  ARCH := arm64
+endif
+
+# Check for arm64 (another common name for aarch64, e.g., on macOS)
+ifeq ($(UNAME_M), arm64)
+  ARCH := arm64
+endif
+
+ifeq ($(ARCH), aarch64)
+	GOFLAGS_EXTRA := -gcflags="all=-spectre=all -N -l" -asmflags="all=-spectre=all"  
+endif
+
+GO=CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go
+GOFLAGS=-trimpath -mod=readonly $(GOFLAGS_EXTRA) -ldflags="-X perfspect/cmd.gVersion=$(VERSION) -s -w"
 
 # Build the perfspect binary
 .PHONY: perfspect
