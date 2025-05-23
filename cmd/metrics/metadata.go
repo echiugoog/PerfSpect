@@ -558,6 +558,7 @@ func getNumGPCountersArm(target target.Target) (numGPCounters int, err error) {
 			err = fmt.Errorf("error converting string to int: %v", err)
 			return
 		}
+		slog.Info("getNumGPCountersArm found %d counters", slog.Int("numGPCounters", numGPCounters))
 	} else {
 		err = fmt.Errorf("no match for number of counters on line: %s", stdout)
 		return
