@@ -204,7 +204,7 @@
         "MetricName": "load_percentage",
         "MetricExpr": "LD_SPEC / INST_SPEC * 100",
         "BriefDescription": "This metric measures load operations as a percentage of operations speculatively executed.",
-        "MetricGroup": "Operation_Mix",
+        "MetricGroup": "Operation_Mix_Load_And_Store",
         "ScaleUnit": "1percent of operations"
     },
     {
@@ -215,21 +215,21 @@
         "MetricName": "scalar_fp_percentage",
         "MetricExpr": "VFP_SPEC / INST_SPEC * 100",
         "BriefDescription": "This metric measures scalar floating point operations as a percentage of operations speculatively executed.",
-        "MetricGroup": "Operation_Mix",
+        "MetricGroup": "Operation_Mix_FP",
         "ScaleUnit": "1percent of operations"
     },
     {
         "MetricName": "simd_percentage",
         "MetricExpr": "ASE_SPEC / INST_SPEC * 100",
         "BriefDescription": "This metric measures advanced SIMD operations as a percentage of total operations speculatively executed.",
-        "MetricGroup": "Operation_Mix",
+        "MetricGroup": "Operation_Mix_SIMD",
         "ScaleUnit": "1percent of operations"
     },
     {
         "MetricName": "store_percentage",
         "MetricExpr": "ST_SPEC / INST_SPEC * 100",
         "BriefDescription": "This metric measures store operations as a percentage of operations speculatively executed.",
-        "MetricGroup": "Operation_Mix",
+        "MetricGroup": "Operation_Mix_Load_And_Store",
         "ScaleUnit": "1percent of operations"
     },
     {
@@ -305,7 +305,7 @@
         "MetricName": "sve_all_percentage",
         "MetricExpr": "SVE_INST_SPEC / INST_SPEC * 100",
         "BriefDescription": "This metric measures scalable vector operations, including loads and stores, as a percentage of operations speculatively executed.",
-        "MetricGroup": "Operation_Mix",
+        "MetricGroup": "Operation_Mix_SVE",
         "ScaleUnit": "1percent of operations"
     }
 ]
