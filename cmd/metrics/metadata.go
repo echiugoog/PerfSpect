@@ -38,6 +38,7 @@ type Metadata struct {
 	PMUDriverVersion          string
 	SocketCount               int
 	CollectionStartTime       time.Time
+	ARMSlots                  int
 	SupportsInstructions      bool
 	SupportsFixedCycles       bool
 	SupportsFixedInstructions bool
@@ -232,6 +233,12 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 		err = fmt.Errorf("failed to retrieve kernel version: %v", err)
 		return
 	}
+	// Arm Slots
+	if metadata.ARMSlots, err = getArmSlots(scriptOutputs); err != nil {
+		if metadata.Architecture == "aarch64" {
+			slog.Warn("failed to retrieve ARM slots")
+		}
+	}
 	// System TSC Frequency
 	if metadata.Architecture == "x86_64" {
 		if metadata.TSCFrequencyHz, err = getTSCFreqHz(scriptOutputs); err != nil {
@@ -320,6 +327,11 @@ func getMetadataScripts(noRoot bool, perfPath string, uarch string, numGPCounter
 		{
 			Name:           "pmu driver version",
 			ScriptTemplate: "dmesg | grep -A 1 \"Intel PMU driver\" | tail -1 | awk '{print $NF}'",
+			Superuser:      !noRoot,
+		},
+		{
+			Name:           "arm slots",
+			ScriptTemplate: "cat /sys/bus/event_source/devices/armv8_pmuv3_0/caps/slots",
 			Superuser:      !noRoot,
 		},
 		{
@@ -840,6 +852,27 @@ func getKernelVersion(scriptOutputs map[string]script.ScriptOutput) (version str
 		return
 	}
 	version = strings.TrimSpace(scriptOutputs["kernel version"].Stdout)
+	return
+}
+
+// getArmSlots
+func getArmSlots(scriptOutputs map[string]script.ScriptOutput) (slots int, err error) {
+	if scriptOutputs["arm slots"].Exitcode != 0 {
+		err = fmt.Errorf("failed to retrieve ARM slots: %s", scriptOutputs["arm slots"].Stderr)
+		return
+	}
+	hexString := strings.TrimSpace(string(scriptOutputs["arm slots"].Stdout))
+	hexString = strings.TrimPrefix(hexString, "0x")
+	parsedValue, err := strconv.ParseInt(hexString, 16, 64)
+	if err != nil {
+		slog.Warn("Failed to parse ARM slots value", slog.String("value", hexString), slog.Any("error", err))
+		err = fmt.Errorf("failed to parse ARM slots value (%s): %w", hexString, err)
+		return
+	} else {
+		slots = int(parsedValue)
+		slog.Debug("Successfully read ARM slots value", slog.Int("slots", slots))
+	}
+	err = fmt.Errorf("unable to determine number of slots")
 	return
 }
 

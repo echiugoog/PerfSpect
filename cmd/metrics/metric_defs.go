@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Knetic/govaluate"
@@ -202,6 +203,9 @@ func ConfigureMetrics(loadedMetrics []MetricDefinition, uncollectableEvents []st
 		tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "[HYPERTHREADING_ON]", hyperThreadingOn)
 		tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "[CONST_THREAD_COUNT]", threadsPerCore)
 		tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "[TXN]", fmt.Sprintf("%f", flagTransactionRate))
+		if metadata.Architecture == "aarch64" {
+			tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "#slots", strconv.Itoa(metadata.ARMSlots))
+		}
 		// get a list of the variables in the expression
 		tmpMetric.Variables = make(map[string]int)
 		expressionIdx := 0
