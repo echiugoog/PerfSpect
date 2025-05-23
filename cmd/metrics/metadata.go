@@ -871,10 +871,9 @@ func getArmSlots(scriptOutputs map[string]script.ScriptOutput) (slots int, err e
 		return
 	} else {
 		slots = int(parsedValue)
-		slog.Debug("Successfully read ARM slots value", slog.Int("slots", slots))
+		slog.Info("Successfully read ARM slots value", slog.Int("slots", slots))
+		return
 	}
-	err = fmt.Errorf("unable to determine number of slots")
-	return
 }
 
 // createCPUSocketMap creates a mapping of logical CPUs to their corresponding sockets.
