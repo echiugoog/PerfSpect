@@ -858,6 +858,7 @@ func getKernelVersion(scriptOutputs map[string]script.ScriptOutput) (version str
 // getArmSlots
 func getArmSlots(scriptOutputs map[string]script.ScriptOutput) (slots int, err error) {
 	if scriptOutputs["arm slots"].Exitcode != 0 {
+		slog.Warn("failed to retrieve ARM slots", slog.Any("script", scriptOutputs["arm slots"]))
 		err = fmt.Errorf("failed to retrieve ARM slots: %s", scriptOutputs["arm slots"].Stderr)
 		return
 	}
