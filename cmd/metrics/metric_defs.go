@@ -225,7 +225,8 @@ func ConfigureMetrics(loadedMetrics []MetricDefinition, uncollectableEvents []st
 		}
 		if tmpMetric.Evaluable, err = govaluate.NewEvaluableExpressionWithFunctions(tmpMetric.Expression, evaluatorFunctions); err != nil {
 			slog.Error("failed to create evaluable expression for metric", slog.String("error", err.Error()), slog.String("metric name", tmpMetric.Name), slog.String("metric expression", tmpMetric.Expression))
-			return
+			// log error, but don't fail
+			// return
 		}
 		metrics = append(metrics, tmpMetric)
 	}
