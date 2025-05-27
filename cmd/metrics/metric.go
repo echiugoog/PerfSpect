@@ -186,6 +186,7 @@ func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error)
 		}
 		// for each of the matched names, set the value and the group from which to retrieve the value next time
 		for _, name := range matchedNames.ToSlice() {
+			slog.Debug("metric variable group assignment", slog.String("metric", metric.Name), slog.String("variable", name), slog.Int("group", bestGroupIdx))
 			metric.Variables[name] = bestGroupIdx
 		}
 		remainingVariableNames = remainingVariableNames.Difference(matchedNames)
