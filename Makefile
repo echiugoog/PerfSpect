@@ -33,7 +33,7 @@ ifeq ($(UNAME_M), arm64)
   ARCH := arm64
 endif
 
-ifeq ($(ARCH), aarch64)
+ifeq ($(ARCH), amd64)
 	GOFLAGS_EXTRA := -gcflags="all=-spectre=all -N -l" -asmflags="all=-spectre=all"  
 endif
 
