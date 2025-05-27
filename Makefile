@@ -23,14 +23,9 @@ ifeq ($(UNAME_M), x86_64)
   ARCH := amd64
 endif
 
-# Check for aarch64
-ifeq ($(UNAME_M), aarch64)
-  ARCH := arm64
-endif
-
 # Check for arm64 (another common name for aarch64, e.g., on macOS)
 ifeq ($(UNAME_M), arm64)
-  ARCH := arm64
+  ARCH := aarch64
 endif
 
 ifeq ($(ARCH), amd64)
