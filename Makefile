@@ -16,11 +16,11 @@ default: perfspect
 ARCH := $(shell uname -m)
 
 # Check for x86_64 (common for amd64)
-ifeq ($(UNAME_M), x86_64)
+ifeq ($(ARCH), x86_64)
   ARCH := amd64
 endif
 
-ifeq ($(UNAME_M), aarch64)
+ifeq ($(ARCH), aarch64)
   ARCH := arm64
 endif
 
