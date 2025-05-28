@@ -765,6 +765,7 @@ func getSupportsFixedTMA(scriptOutputs map[string]script.ScriptOutput) (supporte
 }
 
 func getNumGPCounters(uarch string) (numGPCounters int, err error) {
+	// TODO, this should read from CPUID leaf 0AH instead, perhaps using klauspost/cpuid library
 	shortUarch := uarch[:3]
 	switch shortUarch {
 	case "BDX":
