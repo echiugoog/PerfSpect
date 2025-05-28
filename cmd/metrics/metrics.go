@@ -1307,7 +1307,7 @@ func collectOnTarget(targetContext *targetContext, localTempDir string, localOut
 			}
 		}
 		var perfCommand *exec.Cmd
-		perfCommand, err = getPerfCommand(targetContext.perfPath, targetContext.groupDefinitions, pids, cids)
+		perfCommand, err = getPerfCommand(targetContext.perfPath, targetContext.groupDefinitions, pids, cids, targetContext.metadata.numGPCounters)
 		if err != nil {
 			err = fmt.Errorf("failed to get perf command: %w", err)
 			_ = statusUpdate(myTarget.GetName(), fmt.Sprintf("Error: %s", err.Error()))
