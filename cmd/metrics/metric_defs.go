@@ -23,6 +23,7 @@ type Variable struct {
 type MetricDefinition struct {
 	Name        string `json:"name"`
 	Expression  string `json:"expression"`
+	MetricGroup string // optional named group
 	Description string
 	Variables   map[string]int                 // parsed from Expression for efficiency, int represents group index
 	Evaluable   *govaluate.EvaluableExpression // parse expression once, store here for use in metric evaluation
@@ -119,6 +120,7 @@ func LoadMetricDefinitionsArm(metricDefinitionOverridePath string, selectedMetri
 			Name:        metricName,
 			Expression:  armMetric.Expression,
 			Description: armMetric.Description,
+			MetricGroup: armMetric.MetricGroup,
 			// Variables and Evaluable are populated by ConfigureMetrics
 		}
 	}
