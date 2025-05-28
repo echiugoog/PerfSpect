@@ -36,6 +36,7 @@ type Metadata struct {
 	ModelName                 string
 	PerfSupportedEvents       string
 	PMUDriverVersion          string
+	numGPCounters             int
 	SocketCount               int
 	CollectionStartTime       time.Time
 	ARMSlots                  int
@@ -127,6 +128,7 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 		err = fmt.Errorf("failed to get number of GP counters: %v", err)
 		return
 	}
+	metadata.numGPCounters = numGPCounters
 
 	// the rest of the metadata is retrieved by running scripts in parallel
 	metadataScripts, err := getMetadataScripts(noRoot, perfPath, metadata.Microarchitecture, numGPCounters, noSystemSummary)
