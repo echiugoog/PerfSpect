@@ -12,11 +12,8 @@ VERSION := $(VERSION_NUMBER)_$(COMMIT_DATE)_$(COMMIT_ID)
 
 default: perfspect
 
-# identify arch
-UNAME_M := $(shell uname -m)
-
 # Default ARCH to amd64
-ARCH := amd64
+ARCH := $(shell uname -m)
 
 # Check for x86_64 (common for amd64)
 ifeq ($(UNAME_M), x86_64)
