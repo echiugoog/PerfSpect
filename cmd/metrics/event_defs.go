@@ -111,6 +111,8 @@ func LoadEventGroups(eventDefinitionOverridePath string, metadata Metadata) (gro
 	return
 }
 
+// LoadArmEventGroups reads the events defined in the architecture specific event definition files
+// each event file is a group (which gets re-grouped later)
 func LoadArmEventGroups(eventDefinitionOverridePath string, metadata Metadata) (groups []GroupDefinition, uncollectableEvents []string, err error) {
 	var eventFiles []fs.DirEntry
 	var eventDirPath string
