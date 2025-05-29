@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -170,6 +171,7 @@ func ConfigureMetrics(loadedMetrics []MetricDefinition, uncollectableEvents []st
 	// configure each metric
 	for metricIdx := range loadedMetrics {
 		tmpMetric := loadedMetrics[metricIdx]
+		slog.Debug("metric", slog.String("name", tmpMetric.Name), slog.String("expression", tmpMetric.Expression))
 		// abbreviate event names in metric expressions to match abbreviations used in uncollectableEvents
 		tmpMetric.Expression = abbreviateEventName(tmpMetric.Expression)
 		// skip metrics that use uncollectable events
@@ -208,22 +210,33 @@ func ConfigureMetrics(loadedMetrics []MetricDefinition, uncollectableEvents []st
 		if metadata.Architecture == "aarch64" {
 			tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "#slots", strconv.Itoa(metadata.ARMSlots))
 		}
+		slog.Debug("normalized expression", slog.String("expression", tmpMetric.Expression))
 		// get a list of the variables in the expression
 		tmpMetric.Variables = make(map[string]int)
 		expressionIdx := 0
-		for {
-			startVar := strings.IndexRune(tmpMetric.Expression[expressionIdx:], '[')
-			if startVar == -1 { // no more vars in this expression
-				break
+		if metadata.Architecture == "aarch64" {
+			// metric expressions are a little different on ARM
+			eventRx := regexp.MustCompile(`[A-Z_]{3,}`)
+			eventsInExpression := eventRx.FindAllString(tmpMetric.Expression, -1)
+			slog.Debug("eventsInExpression", slog.Any("eventsInExpression", eventsInExpression))
+			for _, ev := range eventsInExpression {
+				tmpMetric.Variables[ev] = 0 // set to 0, it will be regrouped later
 			}
-			endVar := strings.IndexRune(tmpMetric.Expression[expressionIdx:], ']')
-			if endVar == -1 {
-				err = fmt.Errorf("didn't find end of variable indicator (]) in expression: %s", tmpMetric.Expression[expressionIdx:])
-				return
+		} else {
+			for {
+				startVar := strings.IndexRune(tmpMetric.Expression[expressionIdx:], '[')
+				if startVar == -1 { // no more vars in this expression
+					break
+				}
+				endVar := strings.IndexRune(tmpMetric.Expression[expressionIdx:], ']')
+				if endVar == -1 {
+					err = fmt.Errorf("didn't find end of variable indicator (]) in expression: %s", tmpMetric.Expression[expressionIdx:])
+					return
+				}
+				// add the variable name to the map, set group index to -1 to indicate it has not yet been determined
+				tmpMetric.Variables[tmpMetric.Expression[expressionIdx:][startVar+1:endVar]] = -1
+				expressionIdx += endVar + 1
 			}
-			// add the variable name to the map, set group index to -1 to indicate it has not yet been determined
-			tmpMetric.Variables[tmpMetric.Expression[expressionIdx:][startVar+1:endVar]] = -1
-			expressionIdx += endVar + 1
 		}
 		if tmpMetric.Evaluable, err = govaluate.NewEvaluableExpressionWithFunctions(tmpMetric.Expression, evaluatorFunctions); err != nil {
 			slog.Error("failed to create evaluable expression for metric", slog.String("error", err.Error()), slog.String("metric name", tmpMetric.Name), slog.String("metric expression", tmpMetric.Expression))
