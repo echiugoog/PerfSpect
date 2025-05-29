@@ -1124,16 +1124,19 @@ func prepareTarget(targetContext *targetContext, localTempDir string, localPerfP
 }
 
 // groupEventsByMetricGroupForARM re-groups events based on the MetricGroup specified in metric definitions.
-func groupEventsByMetricGroupForARM(metricDefs []MetricDefinition, allEventDefs []EventDefinition, uncollectableEventNames []string, metadata Metadata) (groupDef []GroupDefinition) {
+func groupEventsByMetricGroupForARM(metricDefs []MetricDefinition, allEventDefs []EventDefinition, uncollectableEventNames []string) (groupDef []GroupDefinition) {
+	slog.Debug("groupEventsByMetricGroupForARM")
 	eventDefMap := make(map[string]EventDefinition, len(allEventDefs))
 	for _, ev := range allEventDefs {
 		eventDefMap[strings.ToUpper(ev.Raw)] = ev
 	}
+	slog.Debug("eventDefMap", slog.Any("eventDefMap", eventDefMap))
 
 	uncollectableEventsSet := make(map[string]struct{}, len(uncollectableEventNames))
 	for _, name := range uncollectableEventNames {
 		uncollectableEventsSet[strings.ToUpper(name)] = struct{}{}
 	}
+	slog.Debug("uncollectableEventsSet", slog.Any("uncollectableEventsSet", uncollectableEventsSet))
 
 	// metricGroupedEventsMap stores events per metric group.
 	metricGroupedEventsMap := make(map[string]map[string]EventDefinition)
@@ -1145,11 +1148,13 @@ func groupEventsByMetricGroupForARM(metricDefs []MetricDefinition, allEventDefs 
 			slog.Warn("Metric definition has no MetricGroup specified, using default", "metric", metricDef.Name)
 			metricGroupName = "nogroup"
 		}
+		slog.Info("regrouping events for group", "metric", metricDef.Name, "group", metricGroupName)
 
 		if _, ok := metricGroupedEventsMap[metricGroupName]; !ok {
 			metricGroupedEventsMap[metricGroupName] = make(map[string]EventDefinition)
 		}
 
+		slog.Debug("metricDef events", slog.Any("variables", metricDef.Variables))
 		for eventName := range metricDef.Variables {
 			normalizedEventName := strings.ToUpper(eventName)
 
@@ -1262,7 +1267,7 @@ func prepareMetrics(targetContext *targetContext, localTempDir string, channelEr
 		}
 		slog.Debug("Total EventDefinitions loaded for ARM", "count", len(allEventDefs))
 
-		targetContext.groupDefinitions = groupEventsByMetricGroupForARM(targetContext.metricDefinitions, allEventDefs, uncollectableEvents, targetContext.metadata)
+		targetContext.groupDefinitions = groupEventsByMetricGroupForARM(targetContext.metricDefinitions, allEventDefs, uncollectableEvents)
 		slog.Debug("ARM events re-grouped by MetricGroup", "group_count", len(targetContext.groupDefinitions), slog.Any("groupDef", targetContext.groupDefinitions))
 	}
 	slog.Debug("create prom metrics")
