@@ -702,6 +702,7 @@ func processRawData(localOutputDir string) error {
 		err = fmt.Errorf("failed to configure metrics: %w", err)
 		return err
 	}
+	// TODO: do we need to regroup metrics for ARM here?
 
 	var filesWritten []string
 
