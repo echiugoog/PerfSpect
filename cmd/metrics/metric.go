@@ -196,6 +196,7 @@ func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error)
 
 // get the variable values that will be used to evaluate the metric's expression
 func getExpressionVariableValues(metric MetricDefinition, frame EventFrame, previousTimestamp float64, metadata Metadata) (variables map[string]any, err error) {
+	slog.Debug("getExpressionVariableValues", slog.String("metric", metric.Name), slog.String("expression", metric.Expression), slog.Any("vars", metric.Variables))
 	variables = make(map[string]any)
 	if err = loadMetricBestGroups(metric, frame); err != nil {
 		err = fmt.Errorf("at least one of the variables couldn't be assigned to a group: %v", err)
@@ -212,7 +213,10 @@ func getExpressionVariableValues(metric MetricDefinition, frame EventFrame, prev
 			err = fmt.Errorf("event groups have changed")
 			return
 		}
-		variables[variableName] = frame.EventGroups[metric.Variables[variableName]].EventValues[variableName] / (frame.Timestamp - previousTimestamp)
+		eventVal := frame.EventGroups[metric.Variables[variableName]].EventValues[variableName]
+		slog.Debug("variable", slog.String("name", variableName), slog.Float64("value", eventVal))
+		slog.Debug("timestamps", slog.Float64("timestamp", frame.Timestamp), slog.Float64("previousTimestamp", previousTimestamp))
+		variables[variableName] = eventVal / (frame.Timestamp - previousTimestamp)
 		// adjust cstate_core/c6-residency value if hyperthreading is enabled
 		// why here? so we don't have to change the perfmon metric formula
 		if metadata.ThreadsPerCore > 1 && variableName == "cstate_core/c6-residency/" {
