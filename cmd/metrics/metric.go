@@ -139,6 +139,7 @@ func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error)
 	loadGroups := false
 	for variableName := range metric.Variables {
 		if metric.Variables[variableName] == -1 { // group not yet set
+			slog.Debug("group not yet set", slog.String("variableName", variableName))
 			loadGroups = true
 			break
 		}
@@ -148,6 +149,7 @@ func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error)
 		}
 	}
 	if !loadGroups {
+		slog.Debug("nothing to do, already loaded", slog.String("metric", metric.Name))
 		return // nothing to do, already loaded
 	}
 	allVariableNames := mapset.NewSetFromMapKeys(metric.Variables)

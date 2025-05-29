@@ -220,7 +220,7 @@ func ConfigureMetrics(loadedMetrics []MetricDefinition, uncollectableEvents []st
 			eventsInExpression := eventRx.FindAllString(tmpMetric.Expression, -1)
 			slog.Debug("eventsInExpression", slog.Any("eventsInExpression", eventsInExpression))
 			for _, ev := range eventsInExpression {
-				tmpMetric.Variables[ev] = 0 // set to 0, it will be regrouped later
+				tmpMetric.Variables[ev] = -1 // group index not yet determined
 			}
 		} else {
 			for {
