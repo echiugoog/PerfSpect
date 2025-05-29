@@ -109,12 +109,14 @@ func getPerfCommandArgs(pids []string, cgroups []string, timeout int, eventGroup
 		args = append(args, "--for-each-cgroup", strings.Join(cgroups, ",")) // collect only for these cgroups
 	}
 	// Check if any event group exceeds the number of available GP counters
+	// TODO: should check metadata if fixed cycles counter available
 	slog.Debug("Checking event group sizes against available GP counters", "groups", len(eventGroups))
 	for i, group := range eventGroups {
 		hasCycleEvent := false
 		for _, event := range group {
-			if event.Name == "cycle" {
-				slog.Debug("event group has cycle event", "group_index", i)
+			eventName := strings.ToLower(event.Name)
+			if eventName == "cycles" || eventName == "cpu-cycles" {
+				slog.Debug("event group has cycles/cpu-cycles event", "group_index", i)
 				hasCycleEvent = true
 				break
 			}
