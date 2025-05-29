@@ -224,6 +224,7 @@ func getExpressionVariableValues(metric MetricDefinition, frame EventFrame, prev
 
 // function to call evaluator so that we can catch panics that come from the evaluator
 func evaluateExpression(metric MetricDefinition, variables map[string]any) (result any, err error) {
+	slog.Debug("evaluateExpression", slog.String("metric", metric.Name), slog.String("expression", metric.Expression), slog.Any("vars", variables))
 	defer func() {
 		if errx := recover(); errx != nil {
 			err = errx.(error)
