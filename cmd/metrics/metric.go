@@ -132,6 +132,7 @@ var metricVariablesLock = sync.RWMutex{}
 // for each variable in a metric, set the best group from which to get its value
 func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error) {
 	// one thread at a time through this function, since it updates the metric variables map and this only needs to be done one time
+	slog.Debug("loadMetricBestGroups", slog.String("metric", metric.Name))
 	metricVariablesLock.Lock()
 	defer metricVariablesLock.Unlock()
 	// only load event groups one time for each metric
@@ -151,8 +152,10 @@ func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error)
 	}
 	allVariableNames := mapset.NewSetFromMapKeys(metric.Variables)
 	remainingVariableNames := allVariableNames.Clone()
+	slog.Debug("allVariableNames", slog.Any("allVariableNames", allVariableNames))
 	for {
 		if remainingVariableNames.Cardinality() == 0 { // found matches for all
+			slog.Debug("found matches for all")
 			break
 		}
 		// find group with the greatest number of event names that match the remaining variable names
@@ -162,9 +165,11 @@ func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error)
 		for groupIdx, group := range frame.EventGroups {
 			groupEventNames := mapset.NewSetFromMapKeys(group.EventValues)
 			intersection := remainingVariableNames.Intersect(groupEventNames)
+			slog.Debug("matching", slog.Int("group", groupIdx), slog.Any("groupEventNames", groupEventNames), slog.Any("remainingVariableNames", remainingVariableNames), slog.Any("intersection", intersection))
 			// if an event value is NaN, remove it from the intersection map with hopes we'll find a better match
 			for _, name := range intersection.ToSlice() {
 				if math.IsNaN(group.EventValues[name]) {
+					slog.Debug("nan, remove", "name", name)
 					intersection.Remove(name)
 				}
 			}
@@ -185,6 +190,7 @@ func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error)
 			break
 		}
 		// for each of the matched names, set the value and the group from which to retrieve the value next time
+		slog.Debug("matchedNames", slog.Any("matchedNames", matchedNames))
 		for _, name := range matchedNames.ToSlice() {
 			slog.Debug("metric variable group assignment", slog.String("metric", metric.Name), slog.String("variable", name), slog.Int("group", bestGroupIdx))
 			metric.Variables[name] = bestGroupIdx
