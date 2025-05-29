@@ -355,6 +355,7 @@ func collapseUncoreGroups(inGroups []EventGroup, firstIdx int, count int) (outGr
 // parseEventJSON parses JSON formatted event into struct
 // example: {"interval" : 5.005113019, "cpu": "0", "counter-value" : "22901873.000000", "unit" : "", "cgroup" : "...1cb2de.scope", "event" : "L1D.REPLACEMENT", "event-runtime" : 80081151765, "pcnt-running" : 6.00, "metric-value" : 0.000000, "metric-unit" : "(null)"}
 func parseEventJSON(rawEvent []byte) (event Event, err error) {
+	slog.Debug("parseEventJSON", slog.String("rawEvent", string(rawEvent)))
 	if err = json.Unmarshal(rawEvent, &event); err != nil {
 		err = fmt.Errorf("unrecognized event format: \"%s\"", rawEvent)
 		return
