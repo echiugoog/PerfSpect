@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -109,6 +110,18 @@ func GetEventFrames(rawEvents [][]byte, eventGroupDefinitions []GroupDefinition,
 	return
 }
 
+// normalize eventNames
+func normalizeEventName(eventName string) string {
+	normalized := eventName
+	armDriverRx := regexp.MustCompile(`armv8_pmuv[0-3a-z_]+`)
+	armPrefix := armDriverRx.FindString(normalized)
+	normalized = strings.TrimPrefix(normalized, armPrefix) // remove prefix for ARM events
+	normalized = strings.TrimPrefix(normalized, "/")
+	normalized = strings.TrimSuffix(normalized, "/")
+	slog.Debug("e", slog.String("eventName", eventName), slog.String("normalized", normalized))
+	return normalized
+}
+
 // parseEvents parses the raw event data into a list of Event
 func parseEvents(rawEvents [][]byte, eventGroupDefinitions []GroupDefinition) (events []Event, err error) {
 	events = make([]Event, 0, len(rawEvents))
@@ -118,6 +131,7 @@ func parseEvents(rawEvents [][]byte, eventGroupDefinitions []GroupDefinition) (e
 	for _, rawEvent := range rawEvents {
 		var event Event
 		if event, err = parseEventJSON(rawEvent); err != nil { // nosemgrep
+			event.Event = normalizeEventName(event.Event)
 			if strings.Contains(err.Error(), "unrecognized event format") {
 				slog.Error(err.Error(), slog.String("event", string(rawEvent)))
 				return
@@ -146,6 +160,7 @@ func parseEvents(rawEvents [][]byte, eventGroupDefinitions []GroupDefinition) (e
 		event.Group = groupIdx
 		events = append(events, event)
 	}
+	slog.Debug("parseEvents", slog.Any("events", events))
 	return
 }
 
