@@ -254,7 +254,7 @@
         "ScaleUnit": "1PKI"
     },
     {
-        "MetricExpr": "ipc / #slots",
+        "MetricExpr": "(INST_RETIRED / CPU_CYCLES) / #slots",
         "BriefDescription": "IPC percentage of peak. The peak of IPC is the number of slots.",
         "MetricGroup": "General",
         "MetricName": "ipc_rate",
