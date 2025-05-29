@@ -1122,6 +1122,75 @@ func prepareTarget(targetContext *targetContext, localTempDir string, localPerfP
 	channelError <- targetError{target: myTarget, err: nil}
 }
 
+// groupEventsByMetricGroupForARM re-groups events based on the MetricGroup specified in metric definitions.
+func groupEventsByMetricGroupForARM(metricDefs []MetricDefinition, allEventDefs []EventDefinition, uncollectableEventNames []string, metadata Metadata) (groupDef []GroupDefinition) {
+	eventDefMap := make(map[string]EventDefinition, len(allEventDefs))
+	for _, ev := range allEventDefs {
+		eventDefMap[strings.ToUpper(ev.Raw)] = ev
+	}
+
+	uncollectableEventsSet := make(map[string]struct{}, len(uncollectableEventNames))
+	for _, name := range uncollectableEventNames {
+		uncollectableEventsSet[strings.ToUpper(name)] = struct{}{}
+	}
+
+	// metricGroupedEventsMap stores events per metric group.
+	metricGroupedEventsMap := make(map[string]map[string]EventDefinition)
+
+	// loop through metric definitions and group events by MetricGroup
+	for _, metricDef := range metricDefs {
+		metricGroupName := metricDef.MetricGroup
+		if metricGroupName == "" {
+			slog.Warn("Metric definition has no MetricGroup specified, using default", "metric", metricDef.Name)
+			metricGroupName = "nogroup"
+		}
+
+		if _, ok := metricGroupedEventsMap[metricGroupName]; !ok {
+			metricGroupedEventsMap[metricGroupName] = make(map[string]EventDefinition)
+		}
+
+		for eventName := range metricDef.Variables {
+			normalizedEventName := strings.ToUpper(eventName)
+
+			if _, isUncollectable := uncollectableEventsSet[normalizedEventName]; isUncollectable {
+				slog.Info("Skipping uncollectable event for grouping", "event", eventName, "metric", metricDef.Name, "group", metricGroupName)
+				continue
+			}
+
+			eventDef, found := eventDefMap[normalizedEventName]
+			if !found {
+				slog.Warn("EventDefinition not found for raw event name in metric variable", "event", eventName, "metric", metricDef.Name)
+				continue
+			}
+
+			// Add this EventDefinition to the current metric group, ensuring no duplicates.
+			if _, foundEvent := metricGroupedEventsMap[metricGroupName][normalizedEventName]; !foundEvent {
+				metricGroupedEventsMap[metricGroupName][normalizedEventName] = eventDef
+				slog.Debug("added event to metric group", "event", eventDef.Name, "group", metricGroupName)
+			}
+		}
+	}
+	slog.Debug("MetricGroup-based grouping complete", "group_count", len(metricGroupedEventsMap), slog.Any("metric_groups", metricGroupedEventsMap))
+
+	for groupName, events := range metricGroupedEventsMap {
+		if len(events) == 0 {
+			slog.Warn("Skipping empty metric group", "group_name", groupName)
+			continue
+		}
+		currentGroup := make(GroupDefinition, 0, len(events))
+		for _, eventDef := range events {
+			currentGroup = append(currentGroup, eventDef)
+		}
+		groupDef = append(groupDef, currentGroup)
+		slog.Debug("Added metric group", "group_name", groupName, "event_count", len(currentGroup), slog.Any("events", currentGroup))
+	}
+
+	if len(groupDef) == 0 && len(metricDefs) > 0 {
+		slog.Warn("No event groups were formed after MetricGroup-based grouping for ARM, despite having metric definitions. Check event collectability and names.")
+	}
+	return
+}
+
 var rxTrailingChars = regexp.MustCompile(`\)$`)
 
 func shortenMetricName(name string) string {
