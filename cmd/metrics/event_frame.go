@@ -131,7 +131,6 @@ func parseEvents(rawEvents [][]byte, eventGroupDefinitions []GroupDefinition) (e
 	for _, rawEvent := range rawEvents {
 		var event Event
 		if event, err = parseEventJSON(rawEvent); err != nil { // nosemgrep
-			event.Event = normalizeEventName(event.Event)
 			if strings.Contains(err.Error(), "unrecognized event format") {
 				slog.Error(err.Error(), slog.String("event", string(rawEvent)))
 				return
@@ -141,6 +140,7 @@ func parseEvents(rawEvents [][]byte, eventGroupDefinitions []GroupDefinition) (e
 				err = nil
 			}
 		}
+		event.Event = normalizeEventName(event.Event)
 		if event.Event != previousEvent {
 			eventIdx++
 			previousEvent = event.Event
