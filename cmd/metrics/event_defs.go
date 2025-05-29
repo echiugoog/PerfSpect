@@ -205,6 +205,11 @@ func LoadArmEventGroups(eventDefinitionOverridePath string, metadata Metadata) (
 			}
 		}
 	}
+	uncollectableEvents = uncollectable.ToSlice()
+
+	if uncollectable.Cardinality() != 0 {
+		slog.Warn("Events not collectable on target", slog.String("events", uncollectable.String()))
+	}
 	return
 }
 
