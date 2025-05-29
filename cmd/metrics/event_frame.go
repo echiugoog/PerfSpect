@@ -106,6 +106,7 @@ func GetEventFrames(rawEvents [][]byte, eventGroupDefinitions []GroupDefinition,
 			return
 		}
 		eventFrames = append(eventFrames, eventFrame)
+		slog.Debug("GetEventFrames", slog.Any("eventFrame", eventFrame))
 	}
 	return
 }

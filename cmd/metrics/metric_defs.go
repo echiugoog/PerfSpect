@@ -216,7 +216,7 @@ func ConfigureMetrics(loadedMetrics []MetricDefinition, uncollectableEvents []st
 		expressionIdx := 0
 		if metadata.Architecture == "aarch64" {
 			// metric expressions are a little different on ARM
-			eventRx := regexp.MustCompile(`[A-Z0-9_]{3,}`)
+			eventRx := regexp.MustCompile(`[A-Z][A-Z0-9_]{2,}`)
 			eventsInExpression := eventRx.FindAllString(tmpMetric.Expression, -1)
 			slog.Debug("eventsInExpression", slog.Any("eventsInExpression", eventsInExpression))
 			for _, ev := range eventsInExpression {

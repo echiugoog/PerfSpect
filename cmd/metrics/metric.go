@@ -233,6 +233,7 @@ func evaluateExpression(metric MetricDefinition, variables map[string]any) (resu
 	if result, err = metric.Evaluable.Evaluate(variables); err != nil {
 		err = fmt.Errorf("%v : %s : %s", err, metric.Name, metric.Expression)
 	}
+	slog.Debug("evaluateExpression", slog.Any("result", result))
 	return
 }
 

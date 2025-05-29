@@ -1175,8 +1175,9 @@ func groupEventsByMetricGroupForARM(metricDefs []MetricDefinition, allEventDefs 
 				slog.Debug("added event to metric group", "event", eventDef.Name, "group", metricGroupName)
 			}
 		}
+		slog.Debug("metricsGroupDef", slog.Any("metricGroupedEventsMap", metricGroupedEventsMap))
 	}
-	slog.Debug("MetricGroup-based grouping complete", "group_count", len(metricGroupedEventsMap), slog.Any("metric_groups", metricGroupedEventsMap))
+	//slog.Debug("MetricGroup-based grouping complete", "group_count", len(metricGroupedEventsMap), slog.Any("metric_groups", metricGroupedEventsMap))
 
 	for groupName, events := range metricGroupedEventsMap {
 		if len(events) == 0 {
