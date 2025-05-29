@@ -1252,6 +1252,18 @@ func prepareMetrics(targetContext *targetContext, localTempDir string, channelEr
 		channelError <- targetError{target: myTarget, err: err}
 		return
 	}
+	// regroup metrics for ARM
+	if targetContext.metadata.Architecture == "arm64" || targetContext.metadata.Architecture == "aarch64" {
+		slog.Info("regrouping metrics for ARM")
+		var allEventDefs []EventDefinition
+		for _, group := range targetContext.groupDefinitions {
+			allEventDefs = append(allEventDefs, group...)
+		}
+		slog.Debug("Total EventDefinitions loaded for ARM", "count", len(allEventDefs))
+
+		targetContext.groupDefinitions = groupEventsByMetricGroupForARM(targetContext.metricDefinitions, allEventDefs, uncollectableEvents, targetContext.metadata)
+		slog.Debug("ARM events re-grouped by MetricGroup", "group_count", len(targetContext.groupDefinitions), slog.Any("groupDef", targetContext.groupDefinitions))
+	}
 	slog.Debug("create prom metrics")
 	for _, def := range targetContext.metricDefinitions {
 		desc := fmt.Sprintf("%s (expr: %s)", def.Name, def.Expression)
