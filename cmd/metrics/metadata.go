@@ -730,3 +730,10 @@ func createCPUSocketMap(coresPerSocket int, sockets int, hyperthreading bool) (c
 	}
 	return cpuSocketMap
 }
+
+func lookupArmVariant(metadata Metadata) (string, error) {
+	if metadata.Microarchitecture == "Neoverse V2" {
+		return "neoverse-n2-v2", nil
+	}
+	return "", fmt.Errorf("unknown ARM variant: %s", metadata.Microarchitecture)
+}
