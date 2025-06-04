@@ -1213,7 +1213,7 @@ func prepareMetrics(targetContext *targetContext, localTempDir string, channelEr
 		channelError <- targetError{target: myTarget, err: err}
 		return
 	}
-	slog.Debug("metadata: " + targetContext.metadata.String())
+	slog.Info("metadata", "metadata", targetContext.metadata.String())
 	if !targetContext.metadata.SupportsInstructions {
 		slog.Error("Target does not support instructions event collection", slog.String("target", myTarget.GetName()))
 		targetContext.err = fmt.Errorf("target not supported, does not support instructions event collection")
