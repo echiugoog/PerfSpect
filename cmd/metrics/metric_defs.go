@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Knetic/govaluate"
@@ -20,10 +22,23 @@ type Variable struct {
 }
 
 type MetricDefinition struct {
-	Name       string                         `json:"name"`
-	Expression string                         `json:"expression"`
-	Variables  map[string]int                 // parsed from Expression for efficiency, int represents group index
-	Evaluable  *govaluate.EvaluableExpression // parse expression once, store here for use in metric evaluation
+	Name        string `json:"name"`
+	Expression  string `json:"expression"`
+	MetricGroup string // optional named group
+	Description string
+	Variables   map[string]int                 // parsed from Expression for efficiency, int represents group index
+	Evaluable   *govaluate.EvaluableExpression // parse expression once, store here for use in metric evaluation
+}
+
+type ArmMetricDefinition struct {
+	Name         string                         `json:"MetricName"`
+	ArchStdEvent string                         `json:"ArchStdEvent"`
+	Expression   string                         `json:"MetricExpr"`
+	Description  string                         `json:"BriefDescription"`
+	MetricGroup  string                         `json:"MetricGroup"`
+	ScaleUnit    string                         `json:"ScaleUnit"`
+	Variables    map[string]int                 // parsed from Expression for efficiency, int represents group index
+	Evaluable    *govaluate.EvaluableExpression // parse expression once, store here for use in metric evaluation
 }
 
 // LoadMetricDefinitions reads and parses metric definitions from an architecture-specific metric
@@ -31,6 +46,10 @@ type MetricDefinition struct {
 // the file associated with the platform's architecture found in the provided metadata. When
 // a list of metric names is provided, only those metric definitions will be loaded.
 func LoadMetricDefinitions(metricDefinitionOverridePath string, selectedMetrics []string, metadata Metadata) (metrics []MetricDefinition, err error) {
+	slog.Debug("loading metric definitions", slog.Any("metadata", metadata))
+	if metadata.Architecture == "aarch64" || metadata.Architecture == "arm64" {
+		return LoadMetricDefinitionsArm(metricDefinitionOverridePath, selectedMetrics, metadata)
+	}
 	var bytes []byte
 	if metricDefinitionOverridePath != "" {
 		bytes, err = os.ReadFile(metricDefinitionOverridePath) // #nosec G304
@@ -75,6 +94,56 @@ func LoadMetricDefinitions(metricDefinitionOverridePath string, selectedMetrics 
 	return
 }
 
+func LoadMetricDefinitionsArm(metricDefinitionOverridePath string, selectedMetrics []string, metadata Metadata) (metrics []MetricDefinition, err error) {
+	var bytes []byte
+	var uarch string
+	if uarch, err = lookupArmVariant(metadata); err != nil {
+		return
+	}
+	if bytes, err = resources.ReadFile(filepath.Join("resources", "metrics", metadata.Architecture, uarch, "metrics.json")); err != nil {
+		return
+	}
+	var metricsInFile []ArmMetricDefinition
+	if err = json.Unmarshal(bytes, &metricsInFile); err != nil {
+		return
+	}
+
+	// Populate a temporary map of all available metrics from the file
+	// for easy lookup if specific metrics are selected.
+	allMetricsFromFile := make(map[string]MetricDefinition)
+	for _, armMetric := range metricsInFile {
+		slog.Debug("read ARM metric", slog.String("name", armMetric.Name), slog.String("expression", armMetric.Expression))
+		metricName := armMetric.Name
+		if metricName == "" {
+			metricName = armMetric.ArchStdEvent
+		}
+		allMetricsFromFile[armMetric.Name] = MetricDefinition{
+			Name:        metricName,
+			Expression:  armMetric.Expression,
+			Description: armMetric.Description,
+			MetricGroup: armMetric.MetricGroup,
+			// Variables and Evaluable are populated by ConfigureMetrics
+		}
+	}
+
+	// if a list of metric names provided, reduce list to match
+	if len(selectedMetrics) > 0 {
+		for _, selectedMetricName := range selectedMetrics {
+			metric, ok := allMetricsFromFile[selectedMetricName]
+			if !ok {
+				err = fmt.Errorf("provided metric name not found: %s", selectedMetricName)
+				return
+			}
+			metrics = append(metrics, metric)
+		}
+	} else { // No specific metrics selected, load all
+		for _, metric := range allMetricsFromFile {
+			metrics = append(metrics, metric)
+		}
+	}
+	return
+}
+
 // ConfigureMetrics prepares metrics for use by the evaluator, by e.g., replacing
 // metric constants with known values and aligning metric variables to perf event
 // groups
@@ -101,6 +170,7 @@ func ConfigureMetrics(loadedMetrics []MetricDefinition, uncollectableEvents []st
 	// configure each metric
 	for metricIdx := range loadedMetrics {
 		tmpMetric := loadedMetrics[metricIdx]
+		slog.Debug("configure metric", slog.String("name", tmpMetric.Name), slog.String("expression", tmpMetric.Expression))
 		// abbreviate event names in metric expressions to match abbreviations used in uncollectableEvents
 		tmpMetric.Expression = abbreviateEventName(tmpMetric.Expression)
 		// skip metrics that use uncollectable events
@@ -136,26 +206,40 @@ func ConfigureMetrics(loadedMetrics []MetricDefinition, uncollectableEvents []st
 		tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "[HYPERTHREADING_ON]", hyperThreadingOn)
 		tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "[CONST_THREAD_COUNT]", threadsPerCore)
 		tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "[TXN]", fmt.Sprintf("%f", flagTransactionRate))
+		if metadata.Architecture == "aarch64" || metadata.Architecture == "arm64" {
+			tmpMetric.Expression = strings.ReplaceAll(tmpMetric.Expression, "#slots", strconv.Itoa(metadata.ARMSlots))
+		}
+		slog.Debug("normalized expression", slog.String("expression", tmpMetric.Expression))
 		// get a list of the variables in the expression
 		tmpMetric.Variables = make(map[string]int)
 		expressionIdx := 0
-		for {
-			startVar := strings.IndexRune(tmpMetric.Expression[expressionIdx:], '[')
-			if startVar == -1 { // no more vars in this expression
-				break
+		if metadata.Architecture == "aarch64" {
+			// metric expressions are a little different on ARM
+			eventRx := regexp.MustCompile(`[A-Z][A-Z0-9_]{2,}`)
+			eventsInExpression := eventRx.FindAllString(tmpMetric.Expression, -1)
+			slog.Debug("eventsInExpression", slog.Any("eventsInExpression", eventsInExpression))
+			for _, ev := range eventsInExpression {
+				tmpMetric.Variables[ev] = -1 // group index not yet determined
 			}
-			endVar := strings.IndexRune(tmpMetric.Expression[expressionIdx:], ']')
-			if endVar == -1 {
-				err = fmt.Errorf("didn't find end of variable indicator (]) in expression: %s", tmpMetric.Expression[expressionIdx:])
-				return
+		} else {
+			for {
+				startVar := strings.IndexRune(tmpMetric.Expression[expressionIdx:], '[')
+				if startVar == -1 { // no more vars in this expression
+					break
+				}
+				endVar := strings.IndexRune(tmpMetric.Expression[expressionIdx:], ']')
+				if endVar == -1 {
+					err = fmt.Errorf("didn't find end of variable indicator (]) in expression: %s", tmpMetric.Expression[expressionIdx:])
+					return
+				}
+				// add the variable name to the map, set group index to -1 to indicate it has not yet been determined
+				tmpMetric.Variables[tmpMetric.Expression[expressionIdx:][startVar+1:endVar]] = -1
+				expressionIdx += endVar + 1
 			}
-			// add the variable name to the map, set group index to -1 to indicate it has not yet been determined
-			tmpMetric.Variables[tmpMetric.Expression[expressionIdx:][startVar+1:endVar]] = -1
-			expressionIdx += endVar + 1
 		}
 		if tmpMetric.Evaluable, err = govaluate.NewEvaluableExpressionWithFunctions(tmpMetric.Expression, evaluatorFunctions); err != nil {
+			// log error, but don't fail
 			slog.Error("failed to create evaluable expression for metric", slog.String("error", err.Error()), slog.String("metric name", tmpMetric.Name), slog.String("metric expression", tmpMetric.Expression))
-			return
 		}
 		metrics = append(metrics, tmpMetric)
 	}
