@@ -1185,7 +1185,7 @@ func groupEventsByMetricGroupForARM(metricDefs []MetricDefinition, allEventDefs 
 			currentGroup = append(currentGroup, eventDef)
 		}
 		groupDef = append(groupDef, currentGroup)
-		slog.Info("Added metric group", "group_name", groupName, "event_count", len(currentGroup), slog.Any("events", currentGroup))
+		slog.Debug("Added metric group", "group_name", groupName, "event_count", len(currentGroup), slog.Any("events", currentGroup))
 	}
 
 	if len(groupDef) == 0 && len(metricDefs) > 0 {
