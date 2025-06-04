@@ -76,6 +76,7 @@ var cpuDefinitions = []CPUDefinition{
 	{MicroArchitecture: "Neoverse N1", Family: "", Model: "1", Stepping: "r3p1", Architecture: "arm64", MemoryChannelCount: 8, LogicalThreadCount: 1, CacheWayCount: 0},     // AWS Graviton 2
 	{MicroArchitecture: "Neoverse V1", Family: "", Model: "1", Stepping: "r1p1", Architecture: "arm64", MemoryChannelCount: 8, LogicalThreadCount: 1, CacheWayCount: 0},     // AWS Graviton 3
 	{MicroArchitecture: "Neoverse V2", Family: "", Model: "0xd4f", Stepping: "r0p1", Architecture: "arm64", MemoryChannelCount: 8, LogicalThreadCount: 1, CacheWayCount: 0}, // GCP Axion C4A
+	{MicroArchitecture: "Neoverse V2", Family: "", Model: "0xd4f", Stepping: "r0p0", Architecture: "arm64", MemoryChannelCount: 8, LogicalThreadCount: 1, CacheWayCount: 0}, // Nvidia Grace?
 }
 
 // getCPUExtended retrieves the CPU structure that matches the provided args
