@@ -1256,7 +1256,7 @@ func prepareMetrics(targetContext *targetContext, localTempDir string, channelEr
 		slog.Info("Total EventDefinitions loaded for ARM", "count", len(allEventDefs))
 
 		targetContext.groupDefinitions = groupEventsByMetricGroupForARM(targetContext.metricDefinitions, allEventDefs, uncollectableEvents)
-		slog.Info("ARM events re-grouped by MetricGroup", "group_count", len(targetContext.groupDefinitions), slog.Any("groupDef", targetContext.groupDefinitions))
+		slog.Debug("ARM events re-grouped by MetricGroup", "group_count", len(targetContext.groupDefinitions), slog.Any("groupDef", targetContext.groupDefinitions))
 	}
 	if flagPrometheusServer {
 		for _, def := range targetContext.metricDefinitions {
