@@ -121,7 +121,7 @@ func getPerfCommandArgs(pids []string, cgroups []string, timeout int, eventGroup
 				// strip any modifiers
 				eventName = eventName[:eventModifier]
 			}
-			if eventName == "cycles" || eventName == "cpu-cycles" {
+			if eventName == "cycles" || eventName == "cpu-cycles" || eventName == "cpu_cycles" {
 				slog.Debug("event group has cycles/cpu-cycles event", "group_index", i)
 				hasCycleEvent = true
 				continue
