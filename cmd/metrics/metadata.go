@@ -353,13 +353,13 @@ func getMetadataScripts(noRoot bool, perfPath string, uarch string, numGPCounter
 	for _, scriptDef := range metadataScriptDefs {
 		if scriptDef.Name == "perf stat fixed instructions" {
 			var eventList []string
-			for range numGPCounters {
+			for range numGPCounters + 1 {
 				eventList = append(eventList, "instructions")
 			}
 			scriptDef.ScriptTemplate = strings.Replace(scriptDef.ScriptTemplate, "{{.InstructionsList}}", strings.Join(eventList, ","), -1)
 		} else if scriptDef.Name == "perf stat fixed cpu-cycles" {
 			var eventList []string
-			for range numGPCounters {
+			for range numGPCounters + 1 {
 				eventList = append(eventList, "cpu-cycles")
 			}
 			scriptDef.ScriptTemplate = strings.Replace(scriptDef.ScriptTemplate, "{{.CpuCyclesList}}", strings.Join(eventList, ","), -1)
