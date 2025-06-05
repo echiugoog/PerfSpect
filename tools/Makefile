@@ -89,11 +89,13 @@ DMIDECODE_VERSION := "dmidecode-3-5"
 dmidecode:
 ifeq ("$(wildcard dmidecode)","")
 	git clone https://github.com/mirror/dmidecode.git
+	cp -r dmidecode dmidecode-aarch64
 else
 	cd dmidecode && git checkout master && git pull
 endif
 	cd dmidecode && git checkout $(DMIDECODE_VERSION)
 	cd dmidecode && make
+	cd dmidecode-aarch64 && CC=aarch64-linux-gnu-gcc make
 
 ETHTOOL_VERSION := "v6.5"
 ethtool:

@@ -24,6 +24,7 @@ RUN for i in {1..5}; do \
     done
 RUN for i in {1..5}; do \
         apt-get update && apt-get install -y git build-essential autotools-dev automake \
+        gcc-aarch64-linux-gnu \
         gawk zlib1g-dev libtool libaio-dev libaio1 pandoc pkgconf libcap-dev docbook-utils \
         libreadline-dev default-jre default-jdk cmake flex bison libssl-dev && break; \
         echo "Retrying in 5 seconds... ($i/5)" && sleep 5; \
