@@ -101,14 +101,20 @@ ETHTOOL_VERSION := "v6.5"
 ethtool:
 ifeq ("$(wildcard ethtool)","")
 	git clone https://git.kernel.org/pub/scm/network/ethtool/ethtool.git
+	cp -r ethtool ethtool-aarch64
 else
 	cd ethtool && git checkout master && git pull
 endif
 	cd ethtool && git checkout $(ETHTOOL_VERSION)
+	cd ethtool-aarch64 && git checkout $(ETHTOOL_VERSION)
 ifeq ("$(wildcard ethtool/Makefile)","")
 	cd ethtool && ./autogen.sh && ./configure enable_netlink=no
 endif
+ifeq ("$(wildcard ethtool-aarch64/Makefile)","")
+	cd ethtool-aarch64 && ./autogen.sh && ./configure --host aarch64-linux-gnu enable_netlink=no
+endif
 	cd ethtool && make
+	cd ethtool-aarch64 && make
 
 FIO_VERSION := "fio-3.38"
 fio:
