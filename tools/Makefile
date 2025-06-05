@@ -104,6 +104,7 @@ ifeq ("$(wildcard ethtool)","")
 	cp -r ethtool ethtool-aarch64
 else
 	cd ethtool && git checkout master && git pull
+	cd ethtool-aarch64 && git checkout master && git pull
 endif
 	cd ethtool && git checkout $(ETHTOOL_VERSION)
 	cd ethtool-aarch64 && git checkout $(ETHTOOL_VERSION)
@@ -120,14 +121,21 @@ FIO_VERSION := "fio-3.38"
 fio:
 ifeq ("$(wildcard fio)","")
 	git clone https://github.com/axboe/fio.git
+	cp -r fio fio-aarch64
 else
 	cd fio && git checkout master && git pull
+	cd fio-aarch64 && git checkout master && git pull
 endif
 	cd fio && git checkout $(FIO_VERSION)
+	cd fio-aarch64 && git checkout $(FIO_VERSION)
 ifeq ("$(wildcard fio/config.log)","")
 	cd fio && ./configure --build-static --disable-native
 endif
-	cd fio && make
+ifeq ("$(wildcard fio-aarch64/config.log)","")
+	cd fio-aarch64 && ./configure --build-static --disable-native --cc=aarch64-linux-gnu-gcc
+endif
+	cd fio && make -j$(nproc)
+	cd fio-aarch64 && make -j $(nproc)
 
 IPMITOOL_VERSION := "IPMITOOL_1_8_19"
 ipmitool:
