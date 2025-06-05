@@ -178,13 +178,20 @@ LSPCI_VERSION := "v3.13.0"
 lspci:
 ifeq ("$(wildcard lspci)","")
 	git clone https://github.com/pciutils/pciutils.git lspci
+	cp -r lspci lspci-aarch64
 else
 	cd lspci && git checkout master && git pull
+	cd lspci-aarch64 && git checkout master && git pull
 endif
 	cd lspci && git checkout $(LSPCI_VERSION)
-	cd lspci && make
+	cd lspci && make -j$(nproc)
 	cd lspci && ./update-pciids.sh
 	cd lspci && gzip -c pci.ids > pci.ids.gz
+	cd lspci-aarch64 && git checkout $(LSPCI_VERSION)
+	cd lspci-aarch64 && sed -i '/^cpu=/d' lib/configure
+	cd lspci-aarch64 && CROSS_COMPILE=aarch64-linux-gnu- make -j$(nproc)
+	cd lspci-aarch64 && ./update-pciids.sh
+	cd lspci-aarch64 && gzip -c pci.ids > pci.ids.gz
 
 MSR_TOOLS_VERSION := "master"
 msr-tools:
