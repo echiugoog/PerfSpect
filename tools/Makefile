@@ -141,15 +141,24 @@ IPMITOOL_VERSION := "IPMITOOL_1_8_19"
 ipmitool:
 ifeq ("$(wildcard ipmitool)","")
 	git clone https://github.com/ipmitool/ipmitool.git
+	cp -r ipmitool ipmitool-aarch64
 endif
 	cd ipmitool && git checkout $(IPMITOOL_VERSION)
+	cd ipmitool-aarch64 && git checkout $(IPMITOOL_VERSION)
 ifeq ("$(wildcard ipmitool/Makefile)","")
 	# hack to get around static build problem - don't check for libreadline
 	sed -i "s#x\$$xenable_ipmishell#xno#" ipmitool/configure.ac
 	cd ipmitool && ./bootstrap && LDFLAGS=-static ./configure
 endif
-	cd ipmitool && make
+ifeq ("$(wildcard ipmitool-aarch64/Makefile)","")
+	# hack to get around static build problem - don't check for libreadline
+	sed -i "s#x\$$xenable_ipmishell#xno#" ipmitool-aarch64/configure.ac
+	cd ipmitool-aarch64 && ./bootstrap && LDFLAGS=-static ./configure
+endif
+	cd ipmitool && make -j$(nproc)
 	cd ipmitool/src && ../libtool --silent --tag=CC --mode=link gcc -fno-strict-aliasing -Wreturn-type -all-static -o ipmitool.static ipmitool.o ipmishell.o ../lib/libipmitool.la plugins/libintf.la
+	cd ipmitool-aarch64 && CC=aarch64-linux-gnu-gcc make -j$(nproc)
+	cd ipmitool-aarch64/src && ../libtool --silent --tag=CC --mode=link gcc -fno-strict-aliasing -Wreturn-type -all-static -o ipmitool.static ipmitool.o ipmishell.o ../lib/libipmitool.la plugins/libintf.la
 
 LSHW_VERSION := "B.02.19"
 lshw:
