@@ -164,11 +164,15 @@ LSHW_VERSION := "B.02.19"
 lshw:
 ifeq ("$(wildcard lshw)","")
 	git clone https://github.com/lyonel/lshw.git
+	cp -r lshw lshw-aarch64
 else
 	cd lshw && git checkout master && git pull
+	cd lshw-aarch64 && git checkout master && git pull
 endif
 	cd lshw && git checkout $(LSHW_VERSION)
-	cd lshw/src && make static
+	cd lshw/src && make static -j$(nproc)
+	cd lshw-aarch64 && git checkout $(LSHW_VERSION)
+	cd lshw-aarch64/src && STRIP=aarch64-linux-gnu-strip CXX=aarch64-linux-gnu-g++ make static -j$(nproc)
 
 LSPCI_VERSION := "v3.13.0"
 lspci:
