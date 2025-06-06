@@ -20,6 +20,8 @@ ifeq ($(ARCH), aarch64)
   ASYNC_PROFILER_ARCH := arm64
 endif
 
+NPROC := $(shell nproc)
+
 default: tools
 .PHONY: default tools async-profiler avx-turbo cpuid dmidecode ethtool fio ipmitool lshw lspci msr-tools pcm perf processwatch spectre-meltdown-checker sshpass stackcollapse-perf stress-ng sysstat tsc turbostat
 
@@ -134,8 +136,8 @@ endif
 ifeq ("$(wildcard fio-aarch64/config.log)","")
 	cd fio-aarch64 && ./configure --build-static --disable-native --cc=aarch64-linux-gnu-gcc
 endif
-	cd fio && make -j$(nproc)
-	cd fio-aarch64 && make -j $(nproc)
+	cd fio && make -j$(NPROC)
+	cd fio-aarch64 && make -j $(NPROC)
 
 IPMITOOL_VERSION := "IPMITOOL_1_8_19"
 ipmitool:
@@ -155,9 +157,9 @@ ifeq ("$(wildcard ipmitool-aarch64/Makefile)","")
 	sed -i "s#x\$$xenable_ipmishell#xno#" ipmitool-aarch64/configure.ac
 	cd ipmitool-aarch64 && ./bootstrap && LDFLAGS=-static ./configure
 endif
-	cd ipmitool && make -j$(nproc)
+	cd ipmitool && make -j$(NPROC)
 	cd ipmitool/src && ../libtool --silent --tag=CC --mode=link gcc -fno-strict-aliasing -Wreturn-type -all-static -o ipmitool.static ipmitool.o ipmishell.o ../lib/libipmitool.la plugins/libintf.la
-	cd ipmitool-aarch64 && CC=aarch64-linux-gnu-gcc make -j$(nproc)
+	cd ipmitool-aarch64 && CC=aarch64-linux-gnu-gcc make -j$(NPROC)
 	cd ipmitool-aarch64/src && ../libtool --silent --tag=CC --mode=link gcc -fno-strict-aliasing -Wreturn-type -all-static -o ipmitool.static ipmitool.o ipmishell.o ../lib/libipmitool.la plugins/libintf.la
 
 LSHW_VERSION := "B.02.19"
@@ -170,9 +172,9 @@ else
 	cd lshw-aarch64 && git checkout master && git pull
 endif
 	cd lshw && git checkout $(LSHW_VERSION)
-	cd lshw/src && make static -j$(nproc)
+	cd lshw/src && make static -j$(NPROC)
 	cd lshw-aarch64 && git checkout $(LSHW_VERSION)
-	cd lshw-aarch64/src && STRIP=aarch64-linux-gnu-strip CXX=aarch64-linux-gnu-g++ make static -j$(nproc)
+	cd lshw-aarch64/src && STRIP=aarch64-linux-gnu-strip CXX=aarch64-linux-gnu-g++ make static -j$(NPROC)
 
 LSPCI_VERSION := "v3.13.0"
 lspci:
@@ -184,12 +186,12 @@ else
 	cd lspci-aarch64 && git checkout master && git pull
 endif
 	cd lspci && git checkout $(LSPCI_VERSION)
-	cd lspci && make -j$(nproc)
+	cd lspci && make -j$(NPROC)
 	cd lspci && ./update-pciids.sh
 	cd lspci && gzip -c pci.ids > pci.ids.gz
 	cd lspci-aarch64 && git checkout $(LSPCI_VERSION)
 	cd lspci-aarch64 && sed -i '/^cpu=/d' lib/configure
-	cd lspci-aarch64 && CROSS_COMPILE=aarch64-linux-gnu- make -j$(nproc)
+	cd lspci-aarch64 && CROSS_COMPILE=aarch64-linux-gnu- make -j$(NPROC)
 	cd lspci-aarch64 && ./update-pciids.sh
 	cd lspci-aarch64 && gzip -c pci.ids > pci.ids.gz
 
@@ -268,11 +270,15 @@ STRESS_NG_VERSION := "V0.13.08"
 stress-ng:
 ifeq ("$(wildcard stress-ng)","")
 	git clone https://github.com/ColinIanKing/stress-ng.git
+	cp -r stress-ng stress-ng-aarch64
 else
 	cd stress-ng && git checkout master && git pull
+	cp -r stress-ng stress-ng-aarch64
 endif
 	cd stress-ng && git checkout $(STRESS_NG_VERSION)
-	cd stress-ng && STATIC=1 make -j$(nproc)
+	cd stress-ng && STATIC=1 make -j$(NPROC)
+	cd stress-ng-aarch64 && git checkout $(STRESS_NG_VERSION)
+	cd stress-ng-aarch64 && CC=aarch64-linux-gnu-gcc STATIC=1 make -j$(NPROC)
 
 SYSSTAT_VERSION := "v12.7.6"
 sysstat:
