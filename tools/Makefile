@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 
+NPROC := $(shell nproc)
+
 default: tools
 .PHONY: default tools async-profiler avx-turbo cpuid dmidecode ethtool fio ipmitool lshw lspci msr-tools pcm perf processwatch spectre-meltdown-checker sshpass stackcollapse-perf stress-ng sysstat tsc turbostat
 
@@ -35,9 +37,10 @@ tools: async-profiler avx-turbo cpuid dmidecode ethtool fio ipmitool lshw lspci 
 	cp linux_turbostat/tools/power/x86/turbostat/turbostat bin/
 	-cd bin && strip --strip-unneeded *
 
-tools-aarch64: async-profiler-aarch64
+tools-aarch64: async-profiler-aarch64 dmidecode-aarch64
 	mkdir -p bin-aarch64
 	cp -R async-profiler-aarch64 bin-aarch64/
+	cp dmidecode-aarch64/dmidecode bin-aarch64/
 
 ASYNC_PROFILER_VERSION := "4.0"
 async-profiler:
@@ -88,6 +91,15 @@ else
 endif
 	cd dmidecode && git checkout $(DMIDECODE_VERSION)
 	cd dmidecode && make
+
+dmidecode-aarch64:
+ifeq ("$(wildcard dmidecode)","")
+	git clone https://github.com/mirror/dmidecode.git dmidecode-aarch64
+else
+	cd dmidecode-aarch64 && git checkout master && git pull
+endif
+	cd dmidecode-aarch64 && git checkout $(DMIDECODE_VERSION)
+	cd dmidecode-aarch64 && make -j$(NPROC)
 
 ETHTOOL_VERSION := "v6.5"
 ethtool:
