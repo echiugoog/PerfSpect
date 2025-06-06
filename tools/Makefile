@@ -37,12 +37,13 @@ tools: async-profiler avx-turbo cpuid dmidecode ethtool fio ipmitool lshw lspci 
 	cp linux_turbostat/tools/power/x86/turbostat/turbostat bin/
 	-cd bin && strip --strip-unneeded *
 
-tools-aarch64: async-profiler-aarch64 dmidecode-aarch64 ethtool-aarch64 fio-aarch64
+tools-aarch64: async-profiler-aarch64 dmidecode-aarch64 ethtool-aarch64 fio-aarch64 ipmitool-aarch64
 	mkdir -p bin-aarch64
 	cp -R async-profiler-aarch64 bin-aarch64/
 	cp dmidecode-aarch64/dmidecode bin-aarch64/
 	cp ethtool-aarch64/ethtool bin-aarch64/
-	cp fio-aarch64/fio bin-aarch64/
+	cp fio-aarch64/fio bin-aarch64/	
+	cp ipmitool-aarch64/src/ipmitool.static bin-aarch64/ipmitool
 	-cd bin-aarch64 && aarch64-linux-gnu-strip --strip-unneeded * || true
 
 
@@ -168,6 +169,19 @@ ifeq ("$(wildcard ipmitool/Makefile)","")
 endif
 	cd ipmitool && make
 	cd ipmitool/src && ../libtool --silent --tag=CC --mode=link gcc -fno-strict-aliasing -Wreturn-type -all-static -o ipmitool.static ipmitool.o ipmishell.o ../lib/libipmitool.la plugins/libintf.la
+
+ipmitool-aarch64:
+ifeq ("$(wildcard ipmitool-aarch64)","")
+	git clone https://github.com/ipmitool/ipmitool.git ipmitool-aarch64
+endif
+	cd ipmitool-aarch64 && git checkout $(IPMITOOL_VERSION)
+ifeq ("$(wildcard ipmitool-aarch64/Makefile)","")
+	# hack to get around static build problem - don't check for libreadline
+	sed -i "s#x\$$xenable_ipmishell#xno#" ipmitool-aarch64/configure.ac
+	cd ipmitool-aarch64 && ./bootstrap && LDFLAGS=-static ./configure --host=aarch64-linux-gnu
+endif
+	cd ipmitool-aarch64 && CC=aarch64-linux-gnu-gcc make -j$(NPROC)
+	cd ipmitool-aarch64/src && ../libtool --silent --tag=CC --mode=link aarch64-linux-gnu-gcc -fno-strict-aliasing -Wreturn-type -all-static -o ipmitool.static ipmitool.o ipmishell.o ../lib/libipmitool.la plugins/libintf.la
 
 LSHW_VERSION := "B.02.19"
 lshw:
