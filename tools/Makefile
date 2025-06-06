@@ -37,13 +37,15 @@ tools: async-profiler avx-turbo cpuid dmidecode ethtool fio ipmitool lshw lspci 
 	cp linux_turbostat/tools/power/x86/turbostat/turbostat bin/
 	-cd bin && strip --strip-unneeded *
 
-tools-aarch64: async-profiler-aarch64 dmidecode-aarch64 ethtool-aarch64 fio-aarch64 ipmitool-aarch64
+tools-aarch64: async-profiler-aarch64 dmidecode-aarch64 ethtool-aarch64 fio-aarch64 ipmitool-aarch64 lshw-aarch64 stackcollapse-perf-aarch64
 	mkdir -p bin-aarch64
 	cp -R async-profiler-aarch64 bin-aarch64/
 	cp dmidecode-aarch64/dmidecode bin-aarch64/
 	cp ethtool-aarch64/ethtool bin-aarch64/
 	cp fio-aarch64/fio bin-aarch64/	
+	cp stackcollapse-perf/stackcollapse-perf-aarch64 bin-aarch64/stackcollapse-perf
 	cp ipmitool-aarch64/src/ipmitool.static bin-aarch64/ipmitool
+	cp lshw-aarch64/src/lshw-static bin-aarch64/lshw
 	-cd bin-aarch64 && aarch64-linux-gnu-strip --strip-unneeded * || true
 
 
@@ -193,6 +195,15 @@ endif
 	cd lshw && git checkout $(LSHW_VERSION)
 	cd lshw/src && make static
 
+lshw-aarch64:
+ifeq ("$(wildcard lshw-aarch64)","")
+	git clone https://github.com/lyonel/lshw.git lshw-aarch64
+else
+	cd lshw-aarch64 && git checkout master && git pull
+endif
+	cd lshw-aarch64 && git checkout $(LSHW_VERSION)
+	cd lshw-aarch64/src && STRIP=aarch64-linux-gnu-strip CXX=aarch64-linux-gnu-g++ make static
+
 LSPCI_VERSION := "v3.13.0"
 lspci:
 ifeq ("$(wildcard lspci)","")
@@ -273,6 +284,9 @@ endif
 
 stackcollapse-perf:
 	cd stackcollapse-perf && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build
+
+stackcollapse-perf-aarch64:
+	cd stackcollapse-perf && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $@
 
 STRESS_NG_VERSION := "V0.13.08"
 stress-ng:
