@@ -37,11 +37,13 @@ tools: async-profiler avx-turbo cpuid dmidecode ethtool fio ipmitool lshw lspci 
 	cp linux_turbostat/tools/power/x86/turbostat/turbostat bin/
 	-cd bin && strip --strip-unneeded *
 
-tools-aarch64: async-profiler-aarch64 dmidecode-aarch64 ethtool-aarch64
+tools-aarch64: async-profiler-aarch64 dmidecode-aarch64 ethtool-aarch64 fio-aarch64
 	mkdir -p bin-aarch64
 	cp -R async-profiler-aarch64 bin-aarch64/
 	cp dmidecode-aarch64/dmidecode bin-aarch64/
 	cp ethtool-aarch64/ethtool bin-aarch64/
+	cp fio-aarch64/fio bin-aarch64/
+	-cd bin-aarch64 && aarch64-linux-gnu-strip --strip-unneeded *
 
 
 ASYNC_PROFILER_VERSION := "4.0"
@@ -101,7 +103,7 @@ else
 	cd dmidecode-aarch64 && git checkout master && git pull
 endif
 	cd dmidecode-aarch64 && git checkout $(DMIDECODE_VERSION)
-	cd dmidecode-aarch64 && make -j$(NPROC)
+	cd dmidecode-aarch64 && CC=aarch64-linux-gnu-gcc make -j$(NPROC)
 
 ETHTOOL_VERSION := "v6.5"
 ethtool:
@@ -124,7 +126,7 @@ else
 endif
 	cd ethtool-aarch64 && git checkout $(ETHTOOL_VERSION)
 ifeq ("$(wildcard ethtool-aarch64/Makefile)","")
-	cd ethtool-aarch64 && ./autogen.sh && ./configure enable_netlink=no
+	cd ethtool-aarch64 && ./autogen.sh && ./configure --host aarch64-linux-gnu enable_netlink=no
 endif
 	cd ethtool-aarch64 && make -j$(NPROC)
 
@@ -140,6 +142,18 @@ ifeq ("$(wildcard fio/config.log)","")
 	cd fio && ./configure --build-static --disable-native
 endif
 	cd fio && make
+
+fio-aarch64:
+ifeq ("$(wildcard fio-aarch64)","")
+	git clone https://github.com/axboe/fio.git fio-aarch64
+else
+	cd fio-aarch64 && git checkout master && git pull
+endif
+	cd fio-aarch64 && git checkout $(FIO_VERSION)
+ifeq ("$(wildcard fio-aarch64/config.log)","")
+	cd fio-aarch64 && ./configure --build-static --disable-native --cc=aarch64-linux-gnu-gcc
+endif
+	cd fio-aarch64 && make -j$(NPROC)
 
 IPMITOOL_VERSION := "IPMITOOL_1_8_19"
 ipmitool:
