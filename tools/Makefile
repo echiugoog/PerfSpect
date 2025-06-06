@@ -288,10 +288,13 @@ else
 	cd sysstat && git checkout master && git pull
 endif
 	cd sysstat && git checkout $(SYSSTAT_VERSION)
+	cp -r sysstat sysstat-aarch64
 ifeq ("$(wildcard sysstat/Makefile)","")
 	cd sysstat && ./configure
+	cd sysstat-aarch64 && ./configure --host=aarch64-linux-gnu
 endif
-	cd sysstat && make
+	cd sysstat && make -j$(NPROC)
+	cd sysstat-aarch64 && make -j$(NPROC)
 
 tsc:
 	cd tsc && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build
