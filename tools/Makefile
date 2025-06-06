@@ -37,10 +37,12 @@ tools: async-profiler avx-turbo cpuid dmidecode ethtool fio ipmitool lshw lspci 
 	cp linux_turbostat/tools/power/x86/turbostat/turbostat bin/
 	-cd bin && strip --strip-unneeded *
 
-tools-aarch64: async-profiler-aarch64 dmidecode-aarch64
+tools-aarch64: async-profiler-aarch64 dmidecode-aarch64 ethtool-aarch64
 	mkdir -p bin-aarch64
 	cp -R async-profiler-aarch64 bin-aarch64/
 	cp dmidecode-aarch64/dmidecode bin-aarch64/
+	cp ethtool-aarch64/ethtool bin-aarch64/
+
 
 ASYNC_PROFILER_VERSION := "4.0"
 async-profiler:
@@ -113,6 +115,18 @@ ifeq ("$(wildcard ethtool/Makefile)","")
 	cd ethtool && ./autogen.sh && ./configure enable_netlink=no
 endif
 	cd ethtool && make
+
+ethtool-aarch64:
+ifeq ("$(wildcard ethtool-aarch64)","")
+	git clone https://git.kernel.org/pub/scm/network/ethtool/ethtool.git ethtool-aarch64
+else
+	cd ethtool-aarch64 && git checkout master && git pull
+endif
+	cd ethtool-aarch64 && git checkout $(ETHTOOL_VERSION)
+ifeq ("$(wildcard ethtool-aarch64/Makefile)","")
+	cd ethtool-aarch64 && ./autogen.sh && ./configure enable_netlink=no
+endif
+	cd ethtool-aarch64 && make -j$(NPROC)
 
 FIO_VERSION := "fio-3.38"
 fio:
