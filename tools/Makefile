@@ -43,7 +43,7 @@ tools-aarch64: async-profiler-aarch64 dmidecode-aarch64 ethtool-aarch64 fio-aarc
 	cp dmidecode-aarch64/dmidecode bin-aarch64/
 	cp ethtool-aarch64/ethtool bin-aarch64/
 	cp fio-aarch64/fio bin-aarch64/
-	-cd bin-aarch64 && aarch64-linux-gnu-strip --strip-unneeded *
+	-cd bin-aarch64 && aarch64-linux-gnu-strip --strip-unneeded * || true
 
 
 ASYNC_PROFILER_VERSION := "4.0"
