@@ -258,6 +258,8 @@ ifeq ("$(wildcard sshpass)","")
 	cd sshpass && ./configure
 endif
 	cd sshpass && make
+	cp -r sshpass sshpass-aarch64
+	cd sshpass-aarch64 && make clean && ./configure --host=aarch64-linux-gnu && make
 
 stackcollapse-perf:
 	cd stackcollapse-perf && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build
