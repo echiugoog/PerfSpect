@@ -297,7 +297,8 @@ endif
 	cd sysstat-aarch64 && make -j$(NPROC)
 
 tsc:
-	cd tsc && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build
+	cd tsc && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build
+	cd tsc && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o tsc-aarch64
 
 TURBOSTAT_VERSION := "6.9.12"
 turbostat:
