@@ -264,7 +264,8 @@ endif
 	cd sshpass-aarch64 && make clean && ./configure --host=aarch64-linux-gnu && make
 
 stackcollapse-perf:
-	cd stackcollapse-perf && CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build
+	cd stackcollapse-perf && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@
+	cd stackcollapse-perf && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o $@-aarch64
 
 STRESS_NG_VERSION := "V0.13.08"
 stress-ng:
