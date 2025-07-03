@@ -233,9 +233,11 @@ func LoadMetadata(myTarget target.Target, noRoot bool, noSystemSummary bool, per
 		return
 	}
 	// Arm Slots
-	if metadata.ARMSlots, err = getArmSlots(scriptOutputs); err != nil {
-		if metadata.Architecture == "aarch64" {
-			slog.Warn("failed to retrieve ARM slots")
+	if metadata.Architecture == "aarch64" || metadata.Architecture == "arm64" {
+		if metadata.ARMSlots, err = getArmSlots(scriptOutputs); err != nil {
+			if metadata.Architecture == "aarch64" {
+				slog.Warn("failed to retrieve ARM slots")
+			}
 		}
 	}
 	// System TSC Frequency
