@@ -94,7 +94,7 @@ func getPerfPath(myTarget target.Target, localPerfPath string) (string, error) {
 // Returns:
 // - args: The command arguments for the 'perf stat' command.
 // - err: An error, if any.
-func getPerfCommandArgs(pids []string, cgroups []string, timeout int, eventGroups []GroupDefinition) (args []string, err error) {
+func getPerfCommandArgs(pids []string, cgroups []string, timeout int, eventGroups []GroupDefinition, md Metadata) (args []string, err error) {
 	// -I: print interval in ms
 	// -j: json formatted event output
 	args = append(args, "stat", "-I", fmt.Sprintf("%d", flagPerfPrintInterval*1000), "-j")
@@ -107,6 +107,73 @@ func getPerfCommandArgs(pids []string, cgroups []string, timeout int, eventGroup
 		args = append(args, "-p", strings.Join(pids, ",")) // collect only for these processes
 	} else if flagScope == scopeCgroup {
 		args = append(args, "--for-each-cgroup", strings.Join(cgroups, ",")) // collect only for these cgroups
+	}
+	// Check if any event group exceeds the number of available GP counters
+	slog.Debug("checking event group sizes against available GP counters", "groups", len(eventGroups))
+	for i, group := range eventGroups {
+		hasCycleEvent := false
+		hasInstructionsEvent := false
+		hasTopDownSlotEvent := false
+		hasRefCyclesEvent := false
+		for _, event := range group {
+			eventName := strings.ToLower(event.Name)
+			if eventModifier := strings.Index(eventName, ":"); eventModifier > 0 {
+				// strip any modifiers
+				eventName = eventName[:eventModifier]
+			}
+			if eventName == "cycles" || eventName == "cpu-cycles" || eventName == "cpu_cycles" {
+				slog.Debug("event group has cycles/cpu-cycles event", "group_index", i)
+				hasCycleEvent = true
+				continue
+			}
+			if eventName == "instructions" || eventName == "inst_retired" {
+				slog.Debug("event group has instructions/inst_retired event", "group_index", i)
+				hasInstructionsEvent = true
+				continue
+			}
+			if eventName == "topdown.slots" {
+				slog.Debug("event group has topdown.slots event", "group_index", i)
+				hasTopDownSlotEvent = true
+				continue
+			}
+			if eventName == "ref-cycles" {
+				slog.Debug("event group has ref-cycles event", "group_index", i)
+				hasRefCyclesEvent = true
+				continue
+			}
+		}
+		availableCounters := md.numGPCounters
+		if hasCycleEvent && md.SupportsFixedCycles {
+			availableCounters++
+		}
+		if hasInstructionsEvent && md.SupportsFixedInstructions {
+			availableCounters++
+		}
+		if hasTopDownSlotEvent && md.SupportsFixedTMA {
+			availableCounters++
+		}
+		if hasRefCyclesEvent && md.SupportsRefCycles {
+			availableCounters++
+		}
+
+		slog.Debug("perf event group size check", "group_index", i, "group_size", len(group), "available_counters", availableCounters)
+		if len(group) > availableCounters {
+			var eventList []string
+			for _, event := range group {
+				eventList = append(eventList, event.Name)
+			}
+			slog.Warn("Event group size exceeds available counters. Events likely not counted",
+				"group_index", i,
+				"event_count", len(group),
+				"num_gp_counters", md.numGPCounters,
+				"available_counters", availableCounters,
+				"has_cycle_event", hasCycleEvent,
+				"has_ref_cycles_event", hasRefCyclesEvent,
+				"has_instructions_event", hasInstructionsEvent,
+				"has_topdown_slots_event", hasTopDownSlotEvent,
+				"excess_count", len(group)-availableCounters,
+				"events", strings.Join(eventList, ","))
+		}
 	}
 	// -e: event groups to collect
 	args = append(args, "-e")
@@ -132,7 +199,7 @@ func getPerfCommandArgs(pids []string, cgroups []string, timeout int, eventGroup
 
 // getPerfCommand is responsible for assembling the command that will be
 // executed to collect event data
-func getPerfCommand(perfPath string, eventGroups []GroupDefinition, pids []string, cids []string) (*exec.Cmd, error) {
+func getPerfCommand(perfPath string, eventGroups []GroupDefinition, pids []string, cids []string, md Metadata) (*exec.Cmd, error) {
 	var duration int
 	if flagScope == scopeSystem {
 		duration = flagDuration
@@ -146,7 +213,7 @@ func getPerfCommand(perfPath string, eventGroups []GroupDefinition, pids []strin
 		duration = 0
 	}
 
-	args, err := getPerfCommandArgs(pids, cids, duration, eventGroups)
+	args, err := getPerfCommandArgs(pids, cids, duration, eventGroups, md)
 	if err != nil {
 		err = fmt.Errorf("failed to assemble perf args: %v", err)
 		return nil, err
