@@ -388,6 +388,8 @@ func (md Metadata) String() string {
 		"Threads per Core: %d, "+
 		"TSC Frequency (Hz): %d, "+
 		"TSC: %d, "+
+		"GP Counters: %d, "+
+		"ARM Slots (if applicable): %d, "+
 		"Instructions event supported: %t, "+
 		"Fixed cycles slot supported: %t, "+
 		"Fixed instructions slot supported: %t, "+
@@ -409,6 +411,8 @@ func (md Metadata) String() string {
 		md.ThreadsPerCore,
 		md.TSCFrequencyHz,
 		md.TSC,
+		md.numGPCounters,
+		md.ARMSlots,
 		md.SupportsInstructions,
 		md.SupportsFixedCycles,
 		md.SupportsFixedInstructions,
