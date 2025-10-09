@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/casbin/govaluate"
 	mapset "github.com/deckarep/golang-set/v2"
 )
 
@@ -25,7 +26,7 @@ func (l *LegacyLoader) Load(loaderConfig LoaderConfig) ([]MetricDefinition, []Gr
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to load event group definitions: %w", err)
 	}
-	configuredMetricDefinitions, err := configureMetrics(loadedMetricDefinitions, uncollectableEvents, loaderConfig.Metadata)
+	configuredMetricDefinitions, err := configureAndFilterMetrics(loadedMetricDefinitions, uncollectableEvents, loaderConfig.Metadata)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to configure metrics: %w", err)
 	}
@@ -67,17 +68,60 @@ func (l *LegacyLoader) loadMetricDefinitions(metricDefinitionOverridePath string
 		for _, metric := range metricsInFile {
 			metricMap[strings.ToLower(metric.Name)] = metric
 		}
-		for _, selectedMetricName := range selectedMetrics {
-			if _, ok := metricMap[strings.ToLower(selectedMetricName)]; !ok {
-				err = fmt.Errorf("provided metric name not found: %s", selectedMetricName)
-				return
+		// Get all metric names for dependency checking.
+		allMetricNames := mapset.NewSet[string]()
+		for _, m := range metricsInFile {
+			allMetricNames.Add(m.Name)
+		}
+		// Recursively find all dependencies of the selected metrics.
+		finalMetricsSet := mapset.NewSet[string]()
+		for _, selectedMetric := range selectedMetrics {
+			if err := l.addMetricWithDependencies(selectedMetric, &metricMap, allMetricNames, finalMetricsSet); err != nil {
+				return nil, err
 			}
-			metrics = append(metrics, metricMap[strings.ToLower(selectedMetricName)])
+		}
+		for _, metric := range metricsInFile {
+			if finalMetricsSet.Contains(metric.Name) {
+				metrics = append(metrics, metric)
+			}
 		}
 	} else {
 		metrics = metricsInFile
 	}
+
 	return
+}
+
+func (l *LegacyLoader) addMetricWithDependencies(metricName string, metricMap *map[string]MetricDefinition, allMetricNames, finalMetricsSet mapset.Set[string]) error {
+	// If the metric has already been added, do nothing.
+	if finalMetricsSet.Contains(metricName) {
+		return nil
+	}
+
+	metric, ok := (*metricMap)[strings.ToLower(metricName)]
+	if !ok {
+		return fmt.Errorf("provided metric name not found: %s", metricName)
+	}
+
+	// Parse the expression to find dependencies.
+	expression, err := govaluate.NewEvaluableExpression(metric.Expression)
+	if err != nil {
+		return fmt.Errorf("failed to create evaluable expression for metric %s: %w", metric.Name, err)
+	}
+	vars := expression.Vars()
+
+	// Recursively add dependencies.
+	for _, varName := range vars {
+		if allMetricNames.Contains(varName) {
+			if err := l.addMetricWithDependencies(varName, metricMap, allMetricNames, finalMetricsSet); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Add the metric itself.
+	finalMetricsSet.Add(metricName)
+	return nil
 }
 
 // loadEventGroups reads the events defined in the architecture specific event definition file, then

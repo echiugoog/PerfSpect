@@ -40,11 +40,18 @@ func ProcessEvents(perfEvents [][]byte, eventGroupDefinitions []GroupDefinition,
 		err = fmt.Errorf("failed to put perf events into groups: %v", err)
 		return
 	}
+
+	// Topologically sort the metric definitions to ensure correct evaluation order.
+	sortedMetricDefs, err := topologicalSort(metricDefinitions)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to sort metric definitions: %w", err)
+	}
+
 	metricFrames = make([]MetricFrame, 0, len(eventFrames))
 	for _, eventFrame := range eventFrames {
 		timeStamp = eventFrame.Timestamp
 		var metricFrame MetricFrame
-		metricFrame.Metrics = make([]Metric, 0, len(metricDefinitions))
+		metricFrame.Metrics = make([]Metric, 0, len(sortedMetricDefs))
 		metricFrame.Timestamp = eventFrame.Timestamp
 		metricFrame.Socket = eventFrame.Socket
 		metricFrame.CPU = eventFrame.CPU
@@ -57,11 +64,19 @@ func ProcessEvents(perfEvents [][]byte, eventGroupDefinitions []GroupDefinition,
 		}
 		metricFrame.PID = strings.Join(pidList, ",")
 		metricFrame.Cmd = strings.Join(cmdList, ",")
+
+		// A map to store the computed metric values for the current frame.
+		computedMetrics := make(map[string]float64)
+
 		// produce metrics from event groups
-		for _, metricDef := range metricDefinitions {
+		allMetricNames := mapset.NewSet[string]()
+		for _, m := range sortedMetricDefs {
+			allMetricNames.Add(m.Name)
+		}
+		for _, metricDef := range sortedMetricDefs {
 			metric := Metric{Name: metricDef.Name, Value: math.NaN()}
 			var variables map[string]any
-			if variables, err = getExpressionVariableValues(metricDef, eventFrame, previousTimestamp, metadata); err != nil {
+			if variables, err = getExpressionVariableValues(metricDef, eventFrame, previousTimestamp, metadata, computedMetrics, allMetricNames); err != nil {
 				slog.Debug("failed to get expression variable values", slog.String("metric", metricDef.Name), slog.String("error", err.Error()))
 				err = nil
 			} else {
@@ -71,18 +86,82 @@ func ProcessEvents(perfEvents [][]byte, eventGroupDefinitions []GroupDefinition,
 					err = nil
 				} else {
 					metric.Value = result.(float64)
+					computedMetrics[metric.Name] = metric.Value
 				}
 			}
 			metricFrame.Metrics = append(metricFrame.Metrics, metric)
 			var prettyVars []string
-			for variableName := range variables {
-				prettyVars = append(prettyVars, fmt.Sprintf("%s=%f", variableName, variables[variableName]))
+			for variableName, value := range variables {
+				prettyVars = append(prettyVars, fmt.Sprintf("%s=%f", variableName, value))
 			}
 			slog.Debug("processed metric", slog.String("name", metricDef.Name), slog.String("expression", metricDef.Expression), slog.String("vars", strings.Join(prettyVars, ", ")))
 		}
 		metricFrames = append(metricFrames, metricFrame)
 	}
 	return
+}
+
+// topologicalSort sorts the metric definitions based on their dependencies.
+func topologicalSort(metrics []MetricDefinition) ([]MetricDefinition, error) {
+	// A map to quickly look up metric definitions by name.
+	metricMap := make(map[string]MetricDefinition)
+	for _, m := range metrics {
+		metricMap[m.Name] = m
+	}
+
+	// The graph stores the dependencies, e.g., graph[A] = {B, C} means B and C depend on A.
+	graph := make(map[string][]string)
+	// The inDegree map stores the number of dependencies for each metric.
+	inDegree := make(map[string]int)
+
+	allMetricNames := mapset.NewSet[string]()
+	for _, m := range metrics {
+		allMetricNames.Add(m.Name)
+	}
+
+	for _, metric := range metrics {
+		inDegree[metric.Name] = 0 // Initialize in-degree.
+		graph[metric.Name] = []string{}
+	}
+
+	for _, metric := range metrics {
+		vars := metric.Evaluable.Vars()
+		for _, varName := range vars {
+			// If a variable is another metric, it's a dependency.
+			if allMetricNames.Contains(varName) {
+				graph[varName] = append(graph[varName], metric.Name)
+				inDegree[metric.Name]++
+			}
+		}
+	}
+
+	// The queue stores metrics with no dependencies.
+	queue := make([]string, 0)
+	for _, metric := range metrics {
+		if inDegree[metric.Name] == 0 {
+			queue = append(queue, metric.Name)
+		}
+	}
+
+	var sorted []MetricDefinition
+	for len(queue) > 0 {
+		metricName := queue[0]
+		queue = queue[1:]
+		sorted = append(sorted, metricMap[metricName])
+
+		for _, dependent := range graph[metricName] {
+			inDegree[dependent]--
+			if inDegree[dependent] == 0 {
+				queue = append(queue, dependent)
+			}
+		}
+	}
+
+	if len(sorted) != len(metrics) {
+		return nil, fmt.Errorf("circular dependency detected in metric definitions")
+	}
+
+	return sorted, nil
 }
 
 // lock to protect metric variable map that holds the event group where a variable value will be retrieved
@@ -153,37 +232,55 @@ func loadMetricBestGroups(metric MetricDefinition, frame EventFrame) (err error)
 }
 
 // get the variable values that will be used to evaluate the metric's expression
-func getExpressionVariableValues(metric MetricDefinition, frame EventFrame, previousTimestamp float64, metadata Metadata) (variables map[string]any, err error) {
+func getExpressionVariableValues(metric MetricDefinition, frame EventFrame, previousTimestamp float64, metadata Metadata, computedMetrics map[string]float64, allMetricNames mapset.Set[string]) (variables map[string]any, err error) {
 	variables = make(map[string]any)
-	if err = loadMetricBestGroups(metric, frame); err != nil {
-		err = fmt.Errorf("at least one of the variables couldn't be assigned to a group: %v", err)
-		return
+	eventVariables := make(map[string]int)
+
+	for varName := range metric.Variables {
+		if allMetricNames.Contains(varName) {
+			value, ok := computedMetrics[varName]
+			if !ok {
+				return nil, fmt.Errorf("metric dependency not met: %s not found in computed metrics for metric %s", varName, metric.Name)
+			}
+			variables[varName] = value
+		} else {
+			eventVariables[varName] = metric.Variables[varName]
+		}
 	}
-	// set the variable values to be used in the expression evaluation
-	for variableName := range metric.Variables {
-		if metric.Variables[variableName] == -2 {
-			err = fmt.Errorf("variable value set to -2 (shouldn't happen): %s", variableName)
-			return
+
+	if len(eventVariables) == 0 {
+		return variables, nil
+	}
+
+	tempMetricDef := metric
+	tempMetricDef.Variables = eventVariables
+
+	if err = loadMetricBestGroups(tempMetricDef, frame); err != nil {
+		return nil, fmt.Errorf("at least one of the variables couldn't be assigned to a group: %v", err)
+	}
+
+	metricVariablesLock.Lock()
+	for varName, groupIndex := range tempMetricDef.Variables {
+		metric.Variables[varName] = groupIndex
+	}
+	metricVariablesLock.Unlock()
+
+	for variableName, groupIndex := range tempMetricDef.Variables {
+		if groupIndex < 0 {
+			return nil, fmt.Errorf("event group for variable %s not resolved for metric %s", variableName, metric.Name)
 		}
-		// check if previously assigned event group is available
-		if metric.Variables[variableName] >= len(frame.EventGroups) {
-			// it may not be available, for example, in cpu granularity where uncore events are only in the first CPU of a socket
-			err = fmt.Errorf("variable %s assigned to group %d, but only %d groups available", variableName, metric.Variables[variableName], len(frame.EventGroups))
-			return
+		if groupIndex >= len(frame.EventGroups) {
+			return nil, fmt.Errorf("variable %s assigned to group %d, but only %d groups available", variableName, groupIndex, len(frame.EventGroups))
 		}
-		if _, ok := frame.EventGroups[metric.Variables[variableName]].EventValues[variableName]; !ok {
-			err = fmt.Errorf("metric variable's assigned group does not have the variable name: %s", variableName)
-			return
+		if _, ok := frame.EventGroups[groupIndex].EventValues[variableName]; !ok {
+			return nil, fmt.Errorf("metric variable's assigned group does not have the variable name: %s", variableName)
 		}
-		// normalize the value to 1 second interval, i.e., events per second
-		variables[variableName] = frame.EventGroups[metric.Variables[variableName]].EventValues[variableName] / (frame.Timestamp - previousTimestamp)
-		// adjust cstate_core/c6-residency value if hyperthreading is enabled and the metric is not at CPU granularity
-		// why here? so we don't have to change the perfmon metric formula
+		variables[variableName] = frame.EventGroups[groupIndex].EventValues[variableName] / (frame.Timestamp - previousTimestamp)
 		if variableName == "cstate_core/c6-residency/" && flagGranularity != granularityCPU && metadata.ThreadsPerCore > 1 {
 			variables[variableName] = variables[variableName].(float64) * float64(metadata.ThreadsPerCore)
 		}
 	}
-	return
+	return variables, nil
 }
 
 // function to call evaluator so that we can catch panics that come from the evaluator
