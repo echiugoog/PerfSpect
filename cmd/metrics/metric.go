@@ -242,6 +242,7 @@ func getExpressionVariableValues(metric MetricDefinition, frame EventFrame, prev
 			if !ok {
 				return nil, fmt.Errorf("metric dependency not met: %s not found in computed metrics for metric %s", varName, metric.Name)
 			}
+			slog.Debug("using computed metric value", slog.String("metric", metric.Name), slog.String("variable", varName), slog.Float64("value", value))
 			variables[varName] = value
 		} else {
 			eventVariables[varName] = metric.Variables[varName]
@@ -266,6 +267,11 @@ func getExpressionVariableValues(metric MetricDefinition, frame EventFrame, prev
 	metricVariablesLock.Unlock()
 
 	for variableName, groupIndex := range tempMetricDef.Variables {
+		// value already exists
+		if v := variables[variableName]; v != nil {
+			slog.Debug("skip variable value lookup", slog.String("metric", metric.Name), slog.String("variable", variableName))
+			continue
+		}
 		if groupIndex < 0 {
 			return nil, fmt.Errorf("event group for variable %s not resolved for metric %s", variableName, metric.Name)
 		}
