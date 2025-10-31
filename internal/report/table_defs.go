@@ -2334,13 +2334,17 @@ func numaBenchmarkTableValues(outputs map[string]script.ScriptOutput) []Field {
 }
 
 func storageBenchmarkTableValues(outputs map[string]script.ScriptOutput) []Field {
-	readBW, writeBW := storagePerfFromOutput(outputs)
-	if readBW == "" && writeBW == "" {
+	readIOPS, readLat, readBw, writeIOPS, writeLat, writeBw := storagePerfFromOutput(outputs)
+	if readIOPS == "" && writeIOPS == "" {
 		return []Field{}
 	}
 	return []Field{
-		{Name: "Single-Thread Read Bandwidth", Values: []string{readBW}},
-		{Name: "Single-Thread Write Bandwidth", Values: []string{writeBW}},
+		{Name: "Random Read IOPS", Values: []string{readIOPS}},
+		{Name: "Random Read Latency (ns)", Values: []string{readLat}},
+		{Name: "Random Read Bandwidth (MiB/s)", Values: []string{readBw}},
+		{Name: "Random Write IOPS", Values: []string{writeIOPS}},
+		{Name: "Random Write Latency (ns)", Values: []string{writeLat}},
+		{Name: "Random Write Bandwidth (MiB/s)", Values: []string{writeBw}},
 	}
 }
 
